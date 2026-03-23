@@ -1,4 +1,0 @@
-interface:
-  display_name: "Orchestrate Subagents"
-  short_description: "Coordinate branch-isolated subagents"
-  default_prompt: "Use $orchestrate-subagents to run a lead-agent plus subagent workflow where the lead agent assigns explicit tasks, branches, file ownership, and acceptance checks; each coding subagent works on its own branch under the same inherited model and configuration; and the lead agent reviews and merges approved work back to the main branch."

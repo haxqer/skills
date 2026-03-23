@@ -1,9 +1,9 @@
 ---
-name: orchestrate-subagents
+name: subagents
 description: Plan and execute multi-agent collaboration in Codex. Use when the user explicitly asks for subagents, delegation, or parallel agent work, and the environment exposes `spawn_agent`, `send_input`, `wait_agent`, and `close_agent`; or when an already-authorized task is large enough to benefit from splitting into independent explorer or worker subtasks. Coordinate one lead agent that keeps ownership of user communication, planning, integration, validation, and final decisions, while subagents take tightly scoped assignments under the same inherited model and configuration.
 ---
 
-# Orchestrate Subagents
+# Subagents
 
 ## Overview
 

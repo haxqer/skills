@@ -24,7 +24,7 @@ generic tooling.
 | `skills/game-remake-research/` | `game-remake-research` | Research-pack workflow for remaking an existing game |
 | `skills/bdd-skill/` | `bdd-skill` | BDD and Gherkin drafting, refinement, and review |
 | `skills/godot/` | `godot` | Godot project development, scene editing, export, and resource repair |
-| `skills/orchestrate-subagents/` | `orchestrate-subagents` | Lead-agent orchestration for branch-isolated multi-agent collaboration |
+| `skills/subagents/` | `subagents` | Lead-agent orchestration for branch-isolated multi-agent collaboration |
 
 ## Repository Layout
 
@@ -35,7 +35,7 @@ hax-skills/
     game-remake-research/
     bdd-skill/
     godot/
-    orchestrate-subagents/
+    subagents/
   scripts/
     link-skills.sh
     package-godot-skill.sh

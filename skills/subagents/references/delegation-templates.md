@@ -20,7 +20,7 @@ Use these templates as starting points. Keep prompts short, concrete, and scoped
 Use for read-only discovery, inventories, or codebase questions.
 
 ```text
-Use $orchestrate-subagents at <skill-path> to handle this subtask.
+Use $subagents at <skill-path> to handle this subtask.
 
 Role: Explorer
 Goal: <question to answer>
@@ -44,7 +44,7 @@ You are not alone in the codebase. Stay within the assigned scope.
 Use for bounded implementation or test work with a disjoint write scope.
 
 ```text
-Use $orchestrate-subagents at <skill-path> to handle this subtask.
+Use $subagents at <skill-path> to handle this subtask.
 
 Role: Worker
 Goal: <implementation goal>
@@ -74,7 +74,7 @@ You are not alone in the codebase. Adjust to existing edits instead of overwriti
 Use for an independent pass on risk, regressions, or missing validation.
 
 ```text
-Use $orchestrate-subagents at <skill-path> to handle this subtask.
+Use $subagents at <skill-path> to handle this subtask.
 
 Role: Reviewer
 Goal: Review <change or area> for bugs, regressions, and missing validation
