@@ -57,12 +57,14 @@ python3 /absolute/path/to/godot/scripts/export/export_project.py \
 3. Use `add_node` or `instantiate_scene` to build structure, `configure_node` for general properties and metadata, `configure_control` for `Control` layout and theme overrides, and `attach_script` plus `connect_signal` to finish behavior wiring.
 4. Keep `load_sprite` for compatibility, but prefer `configure_node` for direct `texture` assignment on sprite-compatible nodes.
 5. Run the project after non-trivial edits instead of assuming the scene still loads.
+6. After any functional change, inspect the validation run logs for `error` and `warning` output. If either appears, treat the task as unfinished, fix the issue, and rerun until the logs are clean.
 
 ### Run And Debug
 
 1. Use host-native runtime tools such as `run_project`, `get_debug_output`, or `stop_project` only when the host agent exposes them.
 2. If the host does not expose runtime tools, launch Godot outside the dispatcher with a direct CLI command such as `godot --path /absolute/path/to/project`.
 3. Treat runtime launch and log inspection as a separate path from the bundled dispatcher operations.
+4. Do not stop at a successful launch. Read the logs from the validation run and fix any reported `error` or `warning` before you finish.
 
 ### Prepare And Export Builds
 
@@ -165,6 +167,7 @@ python3 /absolute/path/to/godot/scripts/export/export_project.py \
 
 - Confirm that every write target is inside the intended Godot project.
 - Confirm that the scene still loads and that the project boots after structural edits.
+- Confirm that the final validation run logs contain no `error` or `warning` output. If they do, fix the issue and rerun before finishing.
 - Confirm that every exported artifact came from the intended preset and that the artifact path matches the target platform's existing convention.
 - Smoke test at least one exported build for the requested targets instead of assuming the preset is valid.
 - Prefer incremental scene changes over rewriting `.tscn` files manually.
