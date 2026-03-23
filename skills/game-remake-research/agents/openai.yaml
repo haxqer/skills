@@ -1,0 +1,4 @@
+interface:
+  display_name: "Game Remake Research"
+  short_description: "Source-backed remake teardowns, benchmarks, and handoff packs"
+  default_prompt: "Use $game-remake-research for source-backed analysis of an existing game into a remake teardown, benchmark, competitor study, dossier, spec, formula set, experiment plan, handoff bundle, or vertical-slice research pack. Separate original-game facts, inferences, and remake decisions."

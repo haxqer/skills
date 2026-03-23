@@ -1,0 +1,64 @@
+name: game-remake-research-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Validate skill layout
+        run: |
+          python3 ./scripts/validate_skill_layout.py --strict-warnings
+          test -d skills/game-remake-research/scripts
+
+      - name: Validate scripts
+        run: |
+          python -m compileall skills/game-remake-research/scripts
+          for script in skills/game-remake-research/scripts/*.py; do
+            python "$script" --help >/dev/null
+          done
+
+      - name: Smoke test repository workflow
+        run: |
+          export GAME_REMAKE_RESEARCH="$GITHUB_WORKSPACE/skills/game-remake-research"
+          python ./skills/game-remake-research/scripts/scaffold_remake_docs.py \
+            --game "Smoke Test" \
+            --out ./tmp/ci-pack \
+            --archetype arpg \
+            --version-scope "CI smoke baseline" \
+            --language en \
+            --with-support-files \
+            --single-file
+          python ./skills/game-remake-research/scripts/rollup_experiment_metrics.py --docs-dir ./tmp/ci-pack
+          python ./skills/game-remake-research/scripts/summarize_experiments.py --docs-dir ./tmp/ci-pack --mode full
+          python ./skills/game-remake-research/scripts/summarize_experiments.py \
+            --docs-dir ./tmp/ci-pack \
+            --mode compact \
+            --output 10-experiment-summary-compact.md
+          python ./skills/game-remake-research/scripts/audit_evidence_links.py \
+            --docs-dir ./tmp/ci-pack \
+            --output reports/evidence-link-audit.md
+          python ./skills/game-remake-research/scripts/build_pack_status_report.py --docs-dir ./tmp/ci-pack --mode both
+          python ./skills/game-remake-research/scripts/merge_remake_docs.py \
+            --input-dir ./tmp/ci-pack \
+            --output smoke-dossier.md \
+            --mode compact
+          python ./skills/game-remake-research/scripts/build_handoff_bundle.py \
+            --docs-dir ./tmp/ci-pack \
+            --dossier-mode compact \
+            --report-mode both \
+            --rollup-metrics
+          python ./skills/game-remake-research/scripts/audit_remake_pack.py --docs-dir ./tmp/ci-pack

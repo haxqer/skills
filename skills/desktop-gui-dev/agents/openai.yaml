@@ -1,0 +1,4 @@
+interface:
+  display_name: "Desktop GUI Dev"
+  short_description: "Choose stacks and build or review desktop GUI apps"
+  default_prompt: "Use $desktop-gui-dev to choose a desktop app stack, to scaffold, debug, package, or review a Tauri, Electron, or version-aware Wails app, or to guide architecture, platform integration, and release-readiness work for native toolkits such as Qt, SwiftUI, WinUI, GTK, and .NET MAUI."

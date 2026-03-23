@@ -1,0 +1,4 @@
+interface:
+  display_name: "BDD / Gherkin"
+  short_description: "Turn requirements into BDD/Gherkin specs"
+  default_prompt: "Use $bdd-skill to turn this requirement into precise Gherkin scenarios with rules, examples, and edge cases."
