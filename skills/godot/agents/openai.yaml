@@ -1,4 +1,4 @@
 interface:
   display_name: "Godot"
-  short_description: "Edit scenes, export builds, and repair Godot UIDs"
-  default_prompt: "Use $godot to inspect a Godot project, batch-edit scenes and UI, export builds from existing presets, create mesh libraries, or repair missing UID metadata."
+  short_description: "Edit scenes, add art/music/story, validate runtime changes, export builds, and repair Godot UIDs"
+  default_prompt: "Use $godot to inspect a Godot project, batch-edit scenes and UI, add art, music, or story content, default to a pixel-art direction when the user does not specify a style and the project has no established one, run the game to validate implemented features when possible, export builds from existing presets, create mesh libraries, or repair missing UID metadata."

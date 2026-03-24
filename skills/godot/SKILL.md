@@ -1,11 +1,11 @@
 ---
 name: godot
-description: Godot project development, debugging, and export skill for inspecting projects, building and fully configuring scenes, wiring scripts and signals, configuring UI, exporting mobile (iOS and Android), web, and desktop (Windows and macOS) builds, exporting mesh libraries, and repairing resource UIDs. Use when Codex needs to work inside a Godot project and should follow the bundled Godot workflows; if the host exposes native Godot runtime tools, use them to run the project and inspect debug output.
+description: Godot project development, debugging, runtime validation, creative content, and export skill for inspecting projects, building and fully configuring scenes, wiring scripts and signals, configuring UI, adding art, music, and story content, exporting mobile (iOS and Android), web, and desktop (Windows and macOS) builds, exporting mesh libraries, and repairing resource UIDs. Use when Codex needs to work inside a Godot project and should follow the bundled Godot workflows; if the host exposes native Godot runtime tools, use them to run the project, validate implemented features, and inspect debug output.
 ---
 
 # Godot
 
-Use this skill to inspect and modify Godot projects with the bundled workflows, scripts, and any available host-native Godot automation tooling.
+Use this skill to inspect and modify Godot projects with the bundled workflows, scripts, and any available host-native Godot automation tooling, including gameplay presentation work such as art, music, and story integration.
 
 ## Start
 
@@ -13,6 +13,8 @@ Use this skill to inspect and modify Godot projects with the bundled workflows, 
 - Resolve `project_path` to an absolute project directory when a host tool requires it.
 - Normalize scene and resource paths to `res://...` when working directly with the bundled Godot scripts in this skill.
 - Inspect unfamiliar projects with any available project-discovery tools, or fall back to reading `project.godot`, scene files, and scripts directly.
+- When the task involves art, music, or story, inspect the existing visual style, palette, audio direction, and narrative format before creating new content.
+- If the user does not specify a style, preserve any clearly established project direction first. If there is no established direction to follow, default new visual work to a pixel-art style and keep related presentation choices consistent with it.
 - Read `export_presets.cfg` before planning export work. Reuse the preset names, bundle identifiers, signing settings, and feature tags that already exist instead of inventing replacements.
 - Require a local `godot` CLI with shell access before using the bundled dispatcher fallback or CLI export wrapper. The bundled scene editing APIs are designed against the current stable Godot docs and tested on Godot `4.6.1`.
 - Read `references/export_targets.md` only when the task involves packaging, signing, or shipping builds for Android, iOS, Web, Windows, or macOS.
@@ -57,14 +59,26 @@ python3 /absolute/path/to/godot/scripts/export/export_project.py \
 3. Use `add_node` or `instantiate_scene` to build structure, `configure_node` for general properties and metadata, `configure_control` for `Control` layout and theme overrides, and `attach_script` plus `connect_signal` to finish behavior wiring.
 4. Keep `load_sprite` for compatibility, but prefer `configure_node` for direct `texture` assignment on sprite-compatible nodes.
 5. Run the project after non-trivial edits instead of assuming the scene still loads.
-6. After any functional change, inspect the validation run logs for `error` and `warning` output. If either appears, treat the task as unfinished, fix the issue, and rerun until the logs are clean.
+6. After any functional change, actively open the game and exercise the changed feature or flow instead of stopping at a successful boot. Check whether the behavior matches the request, whether the UI or gameplay state updates correctly, and whether obvious regressions or bugs appear.
+7. After the validation run, inspect the logs for `error` and `warning` output. If the feature misbehaves or either log level appears, treat the task as unfinished, fix the issue, and rerun until the behavior and logs are both clean.
+
+### Add Art, Music, Or Story
+
+1. Reuse the project's existing art pipeline, palette, sprite sizing, font choices, audio buses, dialogue system, localization format, and cutscene structure before inventing new conventions.
+2. If the request does not specify a style and the project does not already establish one, default new visual content to pixel art. Keep sprites, tiles, UI embellishments, VFX, and promo-style mockups coherent with that direction.
+3. Keep music and sound design aligned with the chosen presentation. For the default pixel-art direction, prefer simple retro or chiptune-friendly cues unless the project already has a different audio language that should be preserved.
+4. Implement story content through the project's existing dialogue, quest, event, or cutscene data flow when possible. If none exists, add the smallest maintainable structure that lets the content play in-engine.
+5. Wire new assets and narrative content into a reachable gameplay path instead of leaving them as unused files in the repository.
+6. Run the game and verify that visual assets render at the intended scale, music and SFX trigger correctly, and story content is reachable and readable without runtime errors.
 
 ### Run And Debug
 
 1. Use host-native runtime tools such as `run_project`, `get_debug_output`, or `stop_project` only when the host agent exposes them.
 2. If the host does not expose runtime tools, launch Godot outside the dispatcher with a direct CLI command such as `godot --path /absolute/path/to/project`.
-3. Treat runtime launch and log inspection as a separate path from the bundled dispatcher operations.
-4. Do not stop at a successful launch. Read the logs from the validation run and fix any reported `error` or `warning` before you finish.
+3. When the host exposes input, browser, window, screenshot, or desktop automation tools, use them to interact with the running game so you can verify the changed feature in a live session instead of relying only on static inspection.
+4. Treat runtime launch and log inspection as a separate path from the bundled dispatcher operations.
+5. Do not stop at a successful launch. Verify the implemented behavior in the running game, then read the logs from the validation run and fix any reported `error` or `warning` before you finish.
+6. If a full interactive test is not possible in the current environment, still launch the project when feasible, perform the deepest smoke test available, and state exactly what you could not verify.
 
 ### Prepare And Export Builds
 
@@ -167,6 +181,8 @@ python3 /absolute/path/to/godot/scripts/export/export_project.py \
 
 - Confirm that every write target is inside the intended Godot project.
 - Confirm that the scene still loads and that the project boots after structural edits.
+- Confirm that the changed feature was exercised in a live run when the environment allowed it, and that the observed behavior matched the request without obvious regressions.
+- Confirm that any new art, music, or story content matches the requested direction, or the pixel-art default when no direction was provided and no project style overrode it.
 - Confirm that the final validation run logs contain no `error` or `warning` output. If they do, fix the issue and rerun before finishing.
 - Confirm that every exported artifact came from the intended preset and that the artifact path matches the target platform's existing convention.
 - Smoke test at least one exported build for the requested targets instead of assuming the preset is valid.
