@@ -1,0 +1,4 @@
+interface:
+  display_name: "Autonomous Development"
+  short_description: "Keep shipping without waiting for user prompts"
+  default_prompt: "Use $autonomous-development to keep building this task end-to-end without pausing for unnecessary questions."
