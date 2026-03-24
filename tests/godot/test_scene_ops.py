@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shutil
 import subprocess
 import tempfile
@@ -27,6 +28,9 @@ def main() -> None:
         test_save_scene_copy()
         test_save_scene_legacy_new_path_alias()
         test_load_sprite_with_generated_texture()
+        test_build_sprite_frames_from_frame_directory()
+        test_build_sprite_frames_uses_natural_sort_and_ignores_non_image_files()
+        test_build_sprite_frames_preserves_explicit_frame_path_order()
         test_export_mesh_library_from_generated_scene()
         test_get_uid_reads_existing_sidecar()
         test_get_uid_reports_missing_sidecar_cleanly()
@@ -358,6 +362,130 @@ def test_load_sprite_with_generated_texture() -> None:
     assert root["texture_path"] == "res://textures/test_gradient.tres"
 
 
+def test_build_sprite_frames_from_frame_directory() -> None:
+    project_path = copy_fixture_project()
+    prepare_test_assets(
+        project_path,
+        {
+            "action": "create_animation_fixture",
+            "scene_path": "scenes/animated_sprite.tscn",
+            "frames_dir": "textures/hero_idle",
+        },
+    )
+    run_dispatcher(
+        project_path,
+        "build_sprite_frames",
+        {
+            "scene_path": "scenes/animated_sprite.tscn",
+            "node_path": "root",
+            "frames_dir": "textures/hero_idle",
+            "animation_name": "idle",
+            "fps": 12,
+            "loop": True,
+            "resource_save_path": "animations/hero_idle_frames.tres",
+        },
+    )
+
+    snapshot = inspect_scene(project_path, "scenes/animated_sprite.tscn")
+    root = snapshot["nodes"]["root"]
+
+    assert root["type"] == "AnimatedSprite2D"
+    assert root["animation"] == "idle"
+    assert root["sprite_frames_path"] == "res://animations/hero_idle_frames.tres"
+    assert Path(project_path / "animations/hero_idle_frames.tres").is_file()
+
+    animation = root["sprite_frames_animations"]["idle"]
+    assert animation["frame_count"] == 3
+    assert animation["fps"] == 12.0
+    assert animation["loop"] is True
+    assert len(animation["frame_paths"]) == 3
+    assert inspect_sprite_frames_resource(project_path, "animations/hero_idle_frames.tres") == [
+        "res://textures/hero_idle/idle_01.png",
+        "res://textures/hero_idle/idle_02.png",
+        "res://textures/hero_idle/idle_03.png",
+    ]
+
+
+def test_build_sprite_frames_uses_natural_sort_and_ignores_non_image_files() -> None:
+    project_path = copy_fixture_project()
+    frames_dir = project_path / "textures/natural_walk"
+    prepare_test_assets(
+        project_path,
+        {
+            "action": "create_animation_fixture",
+            "scene_path": "scenes/natural_sort_sprite.tscn",
+            "frames_dir": "textures/natural_walk",
+            "frame_names": ["walk_10.png", "walk_2.png", "walk_1.png"],
+        },
+    )
+    (frames_dir / "ignore_me.tres").write_text("[gd_resource type=\"Resource\"]\n", encoding="utf-8")
+
+    run_dispatcher(
+        project_path,
+        "build_sprite_frames",
+        {
+            "scene_path": "scenes/natural_sort_sprite.tscn",
+            "node_path": "root",
+            "frames_dir": "textures/natural_walk",
+            "animation_name": "walk",
+            "fps": 10,
+            "loop": True,
+            "resource_save_path": "animations/natural_walk_frames.tres",
+        },
+    )
+
+    snapshot = inspect_scene(project_path, "scenes/natural_sort_sprite.tscn")
+    animation = snapshot["nodes"]["root"]["sprite_frames_animations"]["walk"]
+
+    assert animation["frame_count"] == 3
+    assert inspect_sprite_frames_resource(project_path, "animations/natural_walk_frames.tres") == [
+        "res://textures/natural_walk/walk_1.png",
+        "res://textures/natural_walk/walk_2.png",
+        "res://textures/natural_walk/walk_10.png",
+    ]
+
+
+def test_build_sprite_frames_preserves_explicit_frame_path_order() -> None:
+    project_path = copy_fixture_project()
+    prepare_test_assets(
+        project_path,
+        {
+            "action": "create_animation_fixture",
+            "scene_path": "scenes/explicit_frame_order.tscn",
+            "frames_dir": "textures/custom_order",
+            "frame_names": ["cast_b.png", "cast_a.png", "cast_c.png"],
+        },
+    )
+
+    run_dispatcher(
+        project_path,
+        "build_sprite_frames",
+        {
+            "scene_path": "scenes/explicit_frame_order.tscn",
+            "node_path": "root",
+            "frame_paths": [
+                "textures/custom_order/cast_b.png",
+                "textures/custom_order/cast_c.png",
+                "textures/custom_order/cast_a.png",
+            ],
+            "animation_name": "cast",
+            "fps": 8,
+            "loop": False,
+            "resource_save_path": "animations/cast_frames.tres",
+        },
+    )
+
+    snapshot = inspect_scene(project_path, "scenes/explicit_frame_order.tscn")
+    animation = snapshot["nodes"]["root"]["sprite_frames_animations"]["cast"]
+
+    assert inspect_sprite_frames_resource(project_path, "animations/cast_frames.tres") == [
+        "res://textures/custom_order/cast_b.png",
+        "res://textures/custom_order/cast_c.png",
+        "res://textures/custom_order/cast_a.png",
+    ]
+    assert animation["loop"] is False
+
+
 def test_export_mesh_library_from_generated_scene() -> None:
     project_path = copy_fixture_project()
     prepare_test_assets(
@@ -519,6 +647,19 @@ def inspect_mesh_library(project_path: Path, resource_path: str) -> dict:
         ]
     )
     return extract_json_payload(result.stdout)
+
+
+def inspect_sprite_frames_resource(project_path: Path, resource_path: str) -> list[str]:
+    resource_file = project_path / resource_path
+    text = resource_file.read_text(encoding="utf-8")
+    resource_map = {
+        match.group(2): match.group(1)
+        for match in re.finditer(r'path="([^"]+)" id="([^"]+)"', text)
+    }
+    return [
+        resource_map[match.group(1)]
+        for match in re.finditer(r'texture": ExtResource\("([^"]+)"\)', text)
+    ]
 
 
 def get_uid(project_path: Path, file_path: str) -> dict:

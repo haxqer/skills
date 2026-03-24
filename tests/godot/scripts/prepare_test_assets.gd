@@ -25,6 +25,12 @@ func _init() -> void:
                 str(params.get("scene_path", "")),
                 str(params.get("texture_path", ""))
             )
+        "create_animation_fixture":
+            success = _create_animation_fixture(
+                str(params.get("scene_path", "")),
+                str(params.get("frames_dir", "")),
+                params.get("frame_names", [])
+            )
         "create_mesh_fixture":
             success = _create_mesh_fixture(str(params.get("scene_path", "")))
         _:
@@ -116,6 +122,75 @@ func _create_mesh_fixture(scene_path: String) -> bool:
     root.free()
     if save_error != OK:
         printerr("[ERROR] Failed to save mesh fixture: " + str(save_error))
+        return false
+    return true
+
+func _create_animation_fixture(scene_path: String, frames_dir: String, frame_names: Variant = []) -> bool:
+    var full_scene_path = _normalize_res_path(scene_path)
+    var full_frames_dir = _normalize_res_path(frames_dir)
+    if full_scene_path.is_empty() or full_frames_dir.is_empty():
+        printerr("[ERROR] scene_path and frames_dir are required")
+        return false
+
+    if not _ensure_directory_for_path(full_scene_path):
+        return false
+
+    var absolute_frames_dir = ProjectSettings.globalize_path(full_frames_dir)
+    if not DirAccess.dir_exists_absolute(absolute_frames_dir):
+        var dir_error = DirAccess.make_dir_recursive_absolute(absolute_frames_dir)
+        if dir_error != OK:
+            printerr("[ERROR] Failed to create frames directory: " + full_frames_dir)
+            return false
+
+    var resolved_names: Array = []
+    if frame_names is Array and not (frame_names as Array).is_empty():
+        resolved_names = frame_names
+    else:
+        resolved_names = ["idle_01.png", "idle_02.png", "idle_03.png"]
+
+    var palette = [
+        Color(0.95, 0.85, 0.2, 1.0),
+        Color(0.2, 0.95, 0.85, 1.0),
+        Color(0.85, 0.35, 0.95, 1.0),
+        Color(0.95, 0.45, 0.15, 1.0),
+        Color(0.35, 0.55, 0.95, 1.0)
+    ]
+    var frame_specs: Array = []
+    for index in range(resolved_names.size()):
+        frame_specs.append({
+            "name": str(resolved_names[index]),
+            "subject_x": 1 + (index % 5),
+            "color": palette[index % palette.size()],
+            "width": 8 + index
+        })
+
+    for frame_spec in frame_specs:
+        var image = Image.create(int(frame_spec["width"]), 8, false, Image.FORMAT_RGBA8)
+        image.fill(Color(1.0, 0.0, 1.0, 1.0))
+        for y in range(2, 6):
+            image.set_pixel(int(frame_spec["subject_x"]), y, frame_spec["color"])
+            image.set_pixel(int(frame_spec["subject_x"]) + 1, y, frame_spec["color"])
+        var frame_path = absolute_frames_dir.path_join(str(frame_spec["name"]))
+        var save_image_error = image.save_png(frame_path)
+        if save_image_error != OK:
+            printerr("[ERROR] Failed to save animation frame: " + str(save_image_error))
+            return false
+
+    var root := AnimatedSprite2D.new()
+    root.name = "SpriteAnimator"
+    root.centered = false
+
+    var packed_scene := PackedScene.new()
+    var pack_error = packed_scene.pack(root)
+    if pack_error != OK:
+        root.free()
+        printerr("[ERROR] Failed to pack animation fixture: " + str(pack_error))
+        return false
+
+    var save_error = ResourceSaver.save(packed_scene, full_scene_path)
+    root.free()
+    if save_error != OK:
+        printerr("[ERROR] Failed to save animation fixture scene: " + str(save_error))
         return false
     return true
 

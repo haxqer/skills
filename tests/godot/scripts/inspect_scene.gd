@@ -112,7 +112,30 @@ func _snapshot_node(node: Node) -> Dictionary:
 
     var script_resource = node.get_script()
     snapshot["script_path"] = script_resource.resource_path if script_resource else ""
-    if node is Sprite2D:
+    if node is AnimatedSprite2D:
+        var animated_sprite := node as AnimatedSprite2D
+        snapshot["animation"] = str(animated_sprite.animation)
+        var sprite_frames = animated_sprite.sprite_frames
+        snapshot["sprite_frames_path"] = sprite_frames.resource_path if sprite_frames else ""
+        var animations := {}
+        if sprite_frames:
+            for animation_name in sprite_frames.get_animation_names():
+                var animation_key = str(animation_name)
+                var frame_paths: Array = []
+                var frame_sizes: Array = []
+                for frame_index in range(sprite_frames.get_frame_count(animation_key)):
+                    var texture = sprite_frames.get_frame_texture(animation_key, frame_index)
+                    frame_paths.append(texture.resource_path if texture else "")
+                    frame_sizes.append(_texture_size_to_json(texture))
+                animations[animation_key] = {
+                    "frame_count": sprite_frames.get_frame_count(animation_key),
+                    "fps": sprite_frames.get_animation_speed(animation_key),
+                    "loop": sprite_frames.get_animation_loop(animation_key),
+                    "frame_paths": frame_paths,
+                    "frame_sizes": frame_sizes
+                }
+        snapshot["sprite_frames_animations"] = animations
+    elif node is Sprite2D:
         var sprite := node as Sprite2D
         snapshot["texture_path"] = sprite.texture.resource_path if sprite.texture else ""
     elif node is TextureRect:
@@ -171,6 +194,17 @@ func _color_to_json(color: Color) -> Dictionary:
         "g": color.g,
         "b": color.b,
         "a": color.a
+    }
+
+func _texture_size_to_json(texture: Texture2D) -> Dictionary:
+    if texture == null:
+        return {
+            "width": 0,
+            "height": 0
+        }
+    return {
+        "width": texture.get_width(),
+        "height": texture.get_height()
     }
 
 func _jsonify_variant(value: Variant) -> Variant:
