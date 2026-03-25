@@ -13,6 +13,10 @@ htmlcov/
 venv/
 env/
 .python-version
+.env
+.env.*
+!.env.example
+!.env.*.example
 .idea/
 .vscode/
 *.swp

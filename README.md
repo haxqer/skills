@@ -21,6 +21,7 @@ generic tooling.
 | Skill Directory | Installed As | Purpose |
 | --- | --- | --- |
 | `skills/desktop-gui-dev/` | `desktop-gui-dev` | Desktop GUI app selection, scaffolding, implementation, packaging, and review |
+| `skills/game-asset-gen/` | `game-asset-gen` | Pixel-art sprite, icon, and frame-sequence generation for retro 2D games |
 | `skills/game-remake-research/` | `game-remake-research` | Research-pack workflow for remaking an existing game |
 | `skills/bdd-skill/` | `bdd-skill` | BDD and Gherkin drafting, refinement, and review |
 | `skills/godot/` | `godot` | Godot project development, scene editing, export, and resource repair |
@@ -33,6 +34,7 @@ generic tooling.
 hax-skills/
   skills/
     desktop-gui-dev/
+    game-asset-gen/
     game-remake-research/
     bdd-skill/
     godot/

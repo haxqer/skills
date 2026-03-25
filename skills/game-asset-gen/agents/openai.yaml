@@ -1,0 +1,4 @@
+interface:
+  display_name: "Game Asset Gen"
+  short_description: "Generate retro pixel-art sprites and frame sets"
+  default_prompt: "Use $game-asset-gen to generate or iterate on MapleStory-style or similar pixel-art sprites, item icons, VFX, tiles, UI icons, or short animation frame sequences with the bundled generation and chroma-key cleanup scripts."

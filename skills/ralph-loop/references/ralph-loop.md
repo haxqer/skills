@@ -2,6 +2,16 @@
 
 This reference explains the Ralph-style loop that inspired this skill and how to adapt it to Codex without copying Claude Code's host-specific mechanics.
 
+## Contents
+
+- `What Transfers From Ralph`
+- `What Does Not Transfer Literally`
+- `Codex Adaptation Boundary`
+- `Engineering Protocol`
+- `Validation Ladder`
+- `Common Failure Modes`
+- `When To Read This Reference`
+
 ## What Transfers From Ralph
 
 - Prevent premature stopping. The loop should continue until explicit exit criteria are met.

@@ -2,6 +2,15 @@
 
 Use these templates as starting points. Keep prompts short, concrete, and scoped.
 
+## Contents
+
+- `Tool Mapping`
+- `Default Inheritance`
+- `Explorer Prompt`
+- `Worker Prompt`
+- `Review Prompt`
+- `Assignment Checklist`
+
 ## Tool Mapping
 
 - Start a new subagent with `spawn_agent`.
