@@ -24,6 +24,7 @@ generic tooling.
 | `skills/game-remake-research/` | `game-remake-research` | Research-pack workflow for remaking an existing game |
 | `skills/bdd-skill/` | `bdd-skill` | BDD and Gherkin drafting, refinement, and review |
 | `skills/godot/` | `godot` | Godot project development, scene editing, export, and resource repair |
+| `skills/ralph-loop/` | `ralph-loop` | Closed-loop autonomous engineering protocol until done |
 | `skills/subagents/` | `subagents` | Lead-agent orchestration for branch-isolated multi-agent collaboration |
 
 ## Repository Layout
@@ -35,6 +36,7 @@ hax-skills/
     game-remake-research/
     bdd-skill/
     godot/
+    ralph-loop/
     subagents/
   scripts/
     link-skills.sh

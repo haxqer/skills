@@ -1,9 +1,9 @@
 ---
-name: autonomous-development
-description: Drive uninterrupted end-to-end software execution with minimal user interaction using a Ralph-style engineering loop. Use when the user wants Codex to keep developing continuously, avoid unnecessary questions, choose reasonable reversible assumptions, push through debugging and validation loops, and only stop for clear completion or truly blocking issues such as destructive actions, missing credentials, legal or safety risk, or irrecoverable ambiguity. Trigger on requests like "don't ask me", "keep going", "work autonomously", "ralph loop", "闭环执行", "连续工作", "不要打断", "不要问我", or "一直开发".
+name: ralph-loop
+description: Drive uninterrupted end-to-end software execution with minimal user interaction using the Ralph Loop engineering protocol. Use when the user wants Codex to keep developing continuously, avoid unnecessary questions, choose reasonable reversible assumptions, push through debugging and validation loops, and only stop for clear completion or truly blocking issues such as destructive actions, missing credentials, legal or safety risk, or irrecoverable ambiguity. Trigger on requests like "don't ask me", "keep going", "work autonomously", "ralph loop", "ralph-loop", "闭环执行", "连续工作", "不要打断", "不要问我", or "一直开发".
 ---
 
-# Autonomous Development
+# Ralph Loop
 
 ## Operating Mode
 
