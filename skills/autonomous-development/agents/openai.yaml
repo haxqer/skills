@@ -1,4 +1,4 @@
 interface:
   display_name: "Autonomous Development"
-  short_description: "Keep shipping without waiting for user prompts"
-  default_prompt: "Use $autonomous-development to keep building this task end-to-end without pausing for unnecessary questions."
+  short_description: "Ralph-style engineering loop until done"
+  default_prompt: "Use $autonomous-development as an engineering protocol: define done criteria, work one high-value unresolved item per loop, use validation as backpressure, persist durable task state, and continue until completion or a real blocker."
