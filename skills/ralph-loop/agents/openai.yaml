@@ -1,4 +1,4 @@
 interface:
   display_name: "Ralph Loop"
-  short_description: "Ralph-style engineering loop until done"
-  default_prompt: "Use $ralph-loop as an engineering protocol: define done criteria, work one high-value unresolved item per loop, use validation as backpressure, persist durable task state, and continue until completion or a real blocker."
+  short_description: "Ralph-style loop with interruption-safe resume"
+  default_prompt: "Use $ralph-loop as an engineering protocol: define done criteria, work one high-value unresolved item per loop, use validation as backpressure, persist durable task state, recover from interruptions by re-reading repo state, and continue until completion or a real blocker."
