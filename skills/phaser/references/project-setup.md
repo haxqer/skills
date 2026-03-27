@@ -70,6 +70,29 @@ public/
 - Keep DOM libs enabled. Phaser browser projects typically need at least
   `dom`-related TypeScript libraries.
 
+## Vite Build Warnings
+
+- Treat `[plugin builtin:vite-reporter] Some chunks are larger than 500 kB
+  after minification` as a warning, not an automatic build failure.
+- Check the installed Vite major version before editing config. Vite 8 and
+  newer expose `build.rolldownOptions`; older projects may still use
+  `build.rollupOptions`, and newer Vite versions keep it as a compatibility
+  alias.
+- Do not add `dynamic import()` just to silence the warning. Use lazy loading
+  only when the game has a real runtime boundary, such as optional editors,
+  debug tools, separate campaigns, or large data packs that are not needed for
+  the first screen.
+- For many Phaser games with one main boot flow, a single entry chunk is an
+  acceptable outcome. After checking the emitted file sizes and first-load
+  cost, raising `build.chunkSizeWarningLimit` is often more pragmatic than
+  forcing extra chunk boundaries.
+- If the bundle really contains separable subsystems, prefer a real split:
+  `dynamic import()` for optional code paths, or `output.manualChunks` in the
+  bundler config that matches the installed Vite version.
+- Validate the decision with a production build plus preview. Confirm scene
+  boot still works, asset URLs still resolve, and the initial load behavior is
+  still acceptable for the target device class.
+
 ## Setup Checklist
 
 - Confirm the package is `phaser` and still on a Phaser `3.x` release line.
@@ -78,5 +101,7 @@ public/
   model.
 - Confirm asset directories resolve correctly in both the dev server and a
   production build.
+- Confirm any Vite or Rolldown large-chunk warning was handled deliberately,
+  not left behind as an unexplained build artifact.
 - Confirm the repository has an obvious place for shared boot, preload, and
   gameplay scenes before adding new files.

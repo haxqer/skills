@@ -1,4 +1,4 @@
 interface:
   display_name: "Phaser"
   short_description: "Build and debug Phaser 3 browser games"
-  default_prompt: "Use $phaser to inspect or build a Phaser 3 browser game, prefer the existing repository stack, default new projects to TypeScript + Vite, organize logic around scenes, load assets with stable keys, wire input, Arcade Physics, cameras, tweens, and animations, and validate the changed flow in a browser before finishing."
+  default_prompt: "Use $phaser to inspect or build a Phaser 3 browser game, prefer the existing repository stack, default new projects to TypeScript + Vite, organize logic around scenes, load assets with stable keys, wire input, Arcade Physics, cameras, tweens, and animations, handle Vite build warnings pragmatically instead of forcing unnecessary chunk splitting, and validate the changed flow in a browser before finishing."

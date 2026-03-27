@@ -1,7 +1,7 @@
 # Official Sources
 
-Use official Phaser material first. Prefer the docs, examples, and upstream
-repository in this order:
+Use official Phaser material first. When the issue is bundler behavior rather
+than Phaser runtime behavior, fall through to the current Vite build docs.
 
 | Source | URL | Use it for |
 | --- | --- | --- |
@@ -22,6 +22,7 @@ repository in this order:
 | Official Examples | `https://phaser.io/examples` | Minimal working patterns; keep examples aligned with Phaser 3, not Phaser 4 |
 | Phaser Repo | `https://github.com/phaserjs/phaser` | Upstream source, `src/`, bundled types, changelog, and concrete engine behavior |
 | Create Game Repo | `https://github.com/phaserjs/create-game` | Official starter CLI behavior and supported templates |
+| Vite Build Options | `https://main.vite.dev/config/build-options.html` | `chunkSizeWarningLimit`, `rolldownOptions`, `rollupOptions` compatibility, and production build tuning |
 
 ## Routing Rules
 
@@ -33,5 +34,8 @@ repository in this order:
   types before inventing an answer.
 - Prefer official examples for working patterns such as camera follow,
   tilemaps, input wiring, or Arcade Physics collisions.
+- When the issue is a Vite or Rolldown build warning instead of Phaser runtime
+  behavior, inspect the current Vite docs before changing config names or
+  bundling strategy.
 - Avoid third-party tutorials unless the user explicitly asks for them or the
   official sources do not cover the problem.

@@ -1,6 +1,6 @@
 ---
 name: "phaser"
-description: "Phaser 3 browser game development, debugging, and feature-delivery skill for new or existing projects. Use when Codex needs to create or modify a Phaser 3 game, scaffold or extend a TypeScript + Vite setup, organize scenes, load assets, wire input, Arcade Physics, cameras, tweens, animations, or tilemaps, or diagnose browser runtime and asset-pipeline issues in a Phaser repository."
+description: "Phaser 3 browser game development, debugging, and feature-delivery skill for new or existing projects. Use when Codex needs to create or modify a Phaser 3 game, scaffold or extend a TypeScript + Vite setup, organize scenes, load assets, wire input, Arcade Physics, cameras, tweens, animations, or tilemaps, or diagnose browser runtime, asset-pipeline issues, or Vite and Rolldown build warnings in a Phaser repository."
 ---
 
 # Phaser
@@ -43,6 +43,9 @@ references.
   Matter or the repository already depends on it.
 - Preserve the project's current input style, update-loop structure, and asset
   conventions before introducing a new pattern.
+- Treat Vite or Rolldown large-chunk warnings as diagnostics, not automatic
+  build failures. Do not add `import()` or manual chunking only to silence a
+  warning unless the game has a real lazy-load boundary.
 - Prefer official Phaser 3 docs, examples, and upstream source over third-party
   tutorials.
 - Validate behavior in a browser after non-trivial changes instead of stopping
@@ -60,6 +63,9 @@ references.
   setup with `phaser` installed.
 - For an existing project, adapt to the current stack instead of re-scaffolding
   it.
+- If a production build warns about large chunks, inspect the installed Vite
+  version and emitted bundle sizes before choosing between code splitting,
+  manual chunks, or `build.chunkSizeWarningLimit`.
 
 3. Stabilize the game config.
 - Check renderer choice, parent mount, width and height policy, scale mode,
@@ -83,13 +89,17 @@ references.
 6. Validate the result.
 - Run the local dev server or preview build.
 - Exercise the changed flow in a browser.
+- If the build prints large-chunk warnings, confirm they were either resolved
+  intentionally or judged acceptable for the current game size and loading
+  model.
 - Inspect console errors, failed network requests, and obvious gameplay
   regressions before finishing.
 
 ## Reference Routing
 
 - Read `references/project-setup.md` when creating a Phaser 3 app, adding
-  Phaser to an existing Vite project, or checking the expected folder layout.
+  Phaser to an existing Vite project, checking the expected folder layout, or
+  handling Vite or Rolldown build warnings.
 - Read `references/scene-and-assets.md` when changing scene lifecycle code,
   preload behavior, scene transitions, asset keys, loader flow, or registry
   usage.
@@ -111,5 +121,7 @@ references.
   listeners or duplicate objects.
 - Confirm input, collisions, tweens, and camera behavior match the requested
   gameplay change.
+- Confirm any remaining Vite or Rolldown build warnings are understood and are
+  not being ignored by accident.
 - Confirm the changed flow was exercised in a browser and the console is free
   of relevant errors.

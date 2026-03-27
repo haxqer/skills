@@ -1,6 +1,6 @@
 ---
 name: godot
-description: Godot project development, debugging, runtime validation, creative content integration, animation integration, and export skill for inspecting projects, building and fully configuring scenes, wiring scripts and signals, configuring UI, adding art, integrating provided or separately generated music and story content through project-native flows, integrating frame animations, exporting mobile (iOS and Android), web, and desktop (Windows and macOS) builds, exporting mesh libraries, and repairing resource UIDs. Use when Codex needs to work inside a Godot project and should follow the bundled Godot workflows; if the host exposes native Godot runtime tools, use them to run the project, validate implemented features, and inspect debug output.
+description: Godot project development, debugging, runtime validation, architecture design, creative content integration, animation integration, and export skill for inspecting projects, building and fully configuring scenes, wiring scripts and signals, configuring UI, designing or refactoring modular Controller or System or Model style feature boundaries, adding art, integrating provided or separately generated music and story content through project-native flows, integrating frame animations, exporting mobile (iOS and Android), web, and desktop (Windows and macOS) builds, exporting mesh libraries, and repairing resource UIDs. Use when Codex needs to work inside a Godot project and should follow the bundled Godot workflows; if the host exposes native Godot runtime tools, use them to run the project, validate implemented features, and inspect debug output.
 ---
 
 # Godot
@@ -16,6 +16,8 @@ Use this skill to inspect and modify Godot projects with the bundled workflows, 
 - When the task involves art, music, or story, inspect the existing visual style, palette, audio direction, and narrative format before creating new content.
 - If the user does not specify a style, preserve any clearly established project direction first. If there is no established direction to follow, default new visual work to a pixel-art style and keep related presentation choices consistent with it.
 - Read `references/asset_pipeline.md` only when the task involves generated art, cutouts, or frame animation assets.
+- Read `references/architecture_qframework_lite.md` only when the task involves Godot architecture design, modular refactoring, feature boundaries, controller or system or model responsibilities, command and query separation, or QFramework-style structure.
+- Read `references/architecture_templates.md` only when you need a ready folder layout or starter skeletons for Godot `GDScript` or `C#` architecture work.
 - Read `export_presets.cfg` before planning export work. Reuse the preset names, bundle identifiers, signing settings, and feature tags that already exist instead of inventing replacements.
 - Require a local `godot` CLI with shell access before using the bundled dispatcher fallback or CLI export wrapper. The bundled scene editing APIs are designed against the current stable Godot docs and tested on Godot `4.6.1`.
 - Read `references/export_targets.md` only when the task involves packaging, signing, or shipping builds for Android, iOS, Web, Windows, or macOS.
@@ -52,6 +54,16 @@ python3 /absolute/path/to/godot/scripts/export/export_project.py \
 - Platform support comes from the preset name already defined in `export_presets.cfg`, not from the wrapper itself. Typical preset names are `Android`, `iOS`, `Web`, `Windows Desktop`, and `macOS`.
 
 ## Follow The Main Workflows
+
+### Design Or Refactor Architecture
+
+1. Identify the bounded context or feature slice before moving files. Name it by business capability, not by scene title or widget name.
+2. Inspect the current scripting language, autoloads, scene tree, and feature directories before proposing a new structure. Adapt to an existing architecture when one is already coherent.
+3. In Godot projects, treat scene scripts, input handlers, and UI binding code as `Controller`-edge work; keep domain state in `Model` types or state-owning services; keep reusable workflows in `System`; and keep persistence, HTTP, SDK, serialization, clocks, or platform adapters in `Utility`.
+4. For non-trivial features, put writes behind explicit commands or command-like use cases and keep complex reads in queries or read services instead of bloating node scripts.
+5. Prefer typed signals, events, or observable state for upward notification after state changes. Do not use global singletons as catch-all mutable state bags.
+6. Read `references/architecture_qframework_lite.md` for the responsibility map and review rules, then `references/architecture_templates.md` for Godot-oriented skeletons and folder layouts when you need concrete scaffolding.
+7. After refactors, run the project or the deepest available smoke test and confirm scene scripts, autoload wiring, and feature entrypoints still load cleanly.
 
 ### Build Or Modify A Scene
 
@@ -212,4 +224,5 @@ godot --headless --path /absolute/path/to/project \
 - Confirm that the final validation run logs contain no `error` or `warning` output. If they do, fix the issue and rerun before finishing.
 - Confirm that every exported artifact came from the intended preset and that the artifact path matches the target platform's existing convention.
 - Smoke test at least one exported build for the requested targets instead of assuming the preset is valid.
+- Confirm architecture work did not collapse unrelated responsibilities into a single node script, autoload, or generic manager.
 - Prefer incremental scene changes over rewriting `.tscn` files manually.
