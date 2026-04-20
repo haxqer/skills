@@ -1,0 +1,4 @@
+interface:
+  display_name: "Requirement Doc Review"
+  short_description: "Format requirement docs and write role-based reviews"
+  default_prompt: "Use $requirement-doc-review to normalize this requirement document into Markdown and write PM, architect, and frontend/backend review files in the workspace."

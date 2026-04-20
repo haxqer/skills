@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gemini Image Gen"
+  short_description: "Generate and edit images using Gemini / Imagen"
+  default_prompt: "Use $gemini-imagegen to generate or edit images with Gemini or Imagen and return the final prompt plus selected outputs."
