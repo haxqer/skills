@@ -4,6 +4,7 @@ Use this reference when the user has not fixed the stack yet or is considering a
 
 ## Quick Choice Heuristic
 
+- If the user does not specify a stack and no existing repo constraints apply, default to Tauri 2.x (Rust), React 19 + TypeScript, Tailwind CSS 4, Zustand, SQLite via `rusqlite`, and Recharts.
 - Choose Tauri for a web UI plus a small native shell, especially when Rust is acceptable and bundle size matters.
 - Choose Electron for the broadest Chromium and Node ecosystem support, especially when bundle size is secondary.
 - Choose Wails for a Go backend with a web UI.
@@ -63,6 +64,7 @@ Use this reference when the user has not fixed the stack yet or is considering a
 ## Default Recommendation Pattern
 
 - If the repo already uses a stack, keep it.
+- If the stack is fully open and nothing in the requirements points elsewhere, use this baseline stack: Tauri 2.x (Rust), React 19 + TypeScript, Tailwind CSS 4, Zustand, SQLite via `rusqlite`, and Recharts.
 - If the user wants a modern cross-platform app with a web UI and no strong Node dependency, start with Tauri.
 - If the user needs maximum web-package compatibility or a browser-like runtime, start with Electron.
 - If the team prefers Go or already has Go services or domain logic to reuse, start with Wails and confirm the v2 or v3 boundary immediately.

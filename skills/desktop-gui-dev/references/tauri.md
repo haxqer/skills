@@ -31,6 +31,13 @@ If scaffold commands, templates, or permission details differ from this referenc
   - run `pnpm tauri init`
 - The manual flow creates the `src-tauri` directory and prompts for the app name, window title, frontend location, dev server URL, and frontend dev and build commands.
 
+## Skill Default Stack
+
+- When this skill chooses the stack by default, use Tauri 2.x with the React + TypeScript starter.
+- Add Tailwind CSS 4 for styling, Zustand for client state, and Recharts for charts unless the repo already chose alternatives.
+- Keep SQLite access in Rust via `rusqlite` instead of opening the database directly from the frontend.
+- Prefer typed wrapper functions around Tauri commands so React components do not scatter raw `invoke` calls.
+
 ## Default Working Pattern
 
 - Keep the frontend in its own app structure and keep Rust code inside `src-tauri`.

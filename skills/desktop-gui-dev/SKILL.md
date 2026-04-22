@@ -17,6 +17,7 @@ Treat a desktop GUI application as either a web-shell app or a native-toolkit ap
 
 - Determine whether the user wants a new desktop app, a feature addition, a bug fix, or a packaging and release change.
 - Identify the target platforms, required native capabilities, and whether the existing stack is fixed or still open.
+- If the user does not specify a stack and the repo does not already constrain one, default new web-shell desktop work to Tauri 2.x (Rust), React 19 + TypeScript, Tailwind CSS 4, Zustand, SQLite via `rusqlite`, and Recharts.
 - Identify the app family early: web-shell or native toolkit.
 - For Wails repos, confirm the version boundary immediately from the import path, CLI, or docs domain before reusing commands or runtime assumptions.
 - Read the actual build files and app manifests before editing. Prefer source over stale docs.
@@ -44,6 +45,17 @@ Treat a desktop GUI application as either a web-shell app or a native-toolkit ap
 - Prefer Qt, SwiftUI, WinUI, GTK, or another native toolkit when platform-native widgets, accessibility fidelity, or heavy native UI behavior outweigh web-stack reuse.
 - If the request is still exploratory, narrow the decision with OS targets, offline needs, updater requirements, team language preference, and required native APIs.
 
+## Default Stack When Unspecified
+
+- Use this default only when the user leaves the stack open and the repo does not already establish a different stack.
+- Desktop framework: Tauri 2.x with Rust for native commands, persistence, and platform integration.
+- Frontend: React 19 with TypeScript.
+- Styling: Tailwind CSS 4.
+- State management: Zustand.
+- Database: SQLite accessed from Rust via `rusqlite`.
+- Charts: Recharts.
+- Treat this as the baseline greenfield stack. Only diverge when the user or repo requirements clearly point to Electron, Wails, or a native toolkit.
+
 ## Choose The Right Implementation Path
 
 - For Tauri, Electron, and Wails, use a bridge-first architecture: renderer or frontend code stays unprivileged and talks to typed native adapters.
@@ -53,6 +65,7 @@ Treat a desktop GUI application as either a web-shell app or a native-toolkit ap
 ## Scaffold Deterministically
 
 - For Tauri work, use [references/tauri.md](references/tauri.md) for the current project creation and runtime commands.
+- For the default Tauri stack, start from the React + TypeScript starter and add Tailwind CSS 4, Zustand, Recharts, and Rust-side SQLite access via `rusqlite` unless the repo already chose alternatives.
 - For Electron work, use [references/electron.md](references/electron.md) for Forge-based bootstrap, preload, packaging, and import guidance.
 - For Wails v2 work, use [references/wails.md](references/wails.md) for CLI install, template selection, generated layout, and build commands.
 - For Wails v3 work, use [references/wails-v3.md](references/wails-v3.md) for `wails3` install, generated bindings, frontend runtime boundaries, and build commands.
@@ -117,6 +130,7 @@ Treat a desktop GUI application as either a web-shell app or a native-toolkit ap
 ### New app or large feature work
 
 - Confirm stack, platform targets, distribution channel, and required native integrations.
+- If the user leaves the stack open for a new web-shell app, use the default stack above instead of spending time re-deciding the baseline.
 - Create the shell, establish folder boundaries, and implement one end-to-end feature before broadening the design.
 - For web-shell stacks, add typed bridge helpers early so IPC and native calls do not spread as raw stringly-typed calls through the UI.
 - For native-toolkit stacks, add a clear service or view-model boundary early so platform calls do not leak into every view.
