@@ -13,7 +13,7 @@ If scaffold commands, templates, or permission details differ from this referenc
 
 ## When To Use
 
-- The app needs a web UI with a smaller native shell than Electron.
+- The app needs a web UI with a Rust native layer.
 - The team is comfortable with Rust for native logic, plugins, or performance-sensitive code.
 - Bundle size, startup cost, and capability-based access control matter.
 
