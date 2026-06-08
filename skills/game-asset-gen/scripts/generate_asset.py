@@ -1,30 +1,79 @@
 #!/usr/bin/env python3
 """
-Game Asset Generator CLI — generates pixel art game assets via Gemini API.
+Game Asset Generator CLI — multi-provider image generation for game art.
+
+Supports three request backends behind one interface:
+  - openai            OpenAI-compatible Images API   (POST {base}/images/generations, /images/edits)
+  - openai-responses  OpenAI-compatible Responses API (POST {base}/responses, image_generation tool)
+  - gemini            Google Gemini / Imagen via the google-genai SDK
+
+Everything is configurable so the same CLI works against the real OpenAI API,
+a self-hosted gateway, or any OpenAI-compatible relay:
+  --backend   openai | openai-responses | gemini | auto   (auto = infer from model/base-url)
+  --base-url  custom endpoint, e.g. https://my-gateway.example.com/v1
+  --model     custom model, e.g. gpt-image-2, gpt-image-1, dall-e-3, gemini-2.5-flash-image
+  --api-key   explicit key (else read from env, see below)
+
+Background handling for downstream cutout / Spine / paper-doll work:
+  - OpenAI gpt-image-* return real alpha when --transparent (default for openai backends),
+    so no chroma key is needed.
+  - Gemini has no transparent mode, so generate on flat green (#00FF00) and chroma-key,
+    or run scripts/smart_remove_bg.py afterward.
+
+Env / config keys (first match wins):
+  OpenAI key   : --api-key, OPENAI_API_KEY, IMAGE_API_KEY
+  OpenAI base  : --base-url, OPENAI_BASE_URL, IMAGE_API_BASE_URL  (default https://api.openai.com/v1)
+  Gemini key   : --api-key, GEMINI_API_KEY, GOOGLE_API_KEY, IMAGE_API_KEY
+  Default model: --model, IMAGE_MODEL  (else per-backend default)
 
 Usage:
-  python scripts/generate_asset.py generate --prompt "..." [--out output.png] [--model ...]
-  python scripts/generate_asset.py generate-batch --input prompts.jsonl --out-dir ./out/ [--concurrency 3]
-
-Requires: google-genai, Pillow
-API key: reads GEMINI_API_KEY from the environment or a nearby .env file.
+  python scripts/generate_asset.py generate --prompt "..." --out out.png
+  python scripts/generate_asset.py edit --image base.png --prompt "add steel armor" --out armored.png
+  python scripts/generate_asset.py generate-batch --input jobs.jsonl --out-dir out/
+  python scripts/generate_asset.py chroma-key --input raw.png --out clean.png --downscale 48
 """
 
+from __future__ import annotations
+
 import argparse
+import base64
+import io
 import json
+import mimetypes
 import os
 import sys
+import urllib.error
+import urllib.request
+import uuid
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Defaults
+# ---------------------------------------------------------------------------
+
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-image"
+DEFAULT_OPENAI_MODEL = "gpt-image-1"
+DEFAULT_OPENAI_BASE = "https://api.openai.com/v1"
+DEFAULT_FUZZ = 30
+GREEN = (0, 255, 0)
+# Some gateways sit behind Cloudflare and reject the default urllib UA (error 1010).
+USER_AGENT = "game-asset-gen/1.0 (+https://github.com/anthropics/claude-code)"
+# Retry on transient upstream failures. Note: some gateways wrap an upstream
+# rate-limit (rate_limit_exceeded) inside a 502, so 502 is treated as retryable.
+RETRY_STATUS = {409, 429, 500, 502, 503, 504, 524, 529}
+DEFAULT_MAX_RETRIES = 5
+# Mutable at runtime via --max-retries (gateways with saturated shared keys may
+# need a long retry budget before a slot frees up).
+MAX_RETRIES = DEFAULT_MAX_RETRIES
+
 
 # ---------------------------------------------------------------------------
 # .env loader (minimal, no external dependency)
 # ---------------------------------------------------------------------------
 
 def load_dotenv(env_path: Path | None = None):
-    """Load key=value pairs from a .env file into os.environ."""
+    """Load key=value pairs from a .env file into os.environ (no overwrite)."""
     if env_path is None:
-        # Search from the current working directory first so installed skills
-        # can still pick up a project-local .env, then fall back to the script.
         search_roots = [Path.cwd(), Path(__file__).resolve().parent]
         seen: set[Path] = set()
         for root in search_roots:
@@ -55,17 +104,71 @@ def load_dotenv(env_path: Path | None = None):
                 os.environ[key] = value
 
 
+def _die(message: str, code: int = 1):
+    print(f"ERROR: {message}", file=sys.stderr)
+    sys.exit(code)
+
+
 # ---------------------------------------------------------------------------
-# Gemini image generation
+# Backend / config resolution
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "gemini-2.5-flash-image"
-DEFAULT_FUZZ = 30
+def resolve_backend(backend: str, model: str | None, base_url: str | None) -> str:
+    """Map 'auto' to a concrete backend using the model name and base-url hints."""
+    if backend and backend != "auto":
+        return backend
+    m = (model or "").lower()
+    if m.startswith(("gemini", "imagen")):
+        return "gemini"
+    if m.startswith(("gpt-image", "dall-e", "dalle")):
+        return "openai"
+    # A custom base-url almost always means an OpenAI-compatible gateway.
+    if base_url or os.environ.get("OPENAI_BASE_URL") or os.environ.get("IMAGE_API_BASE_URL"):
+        return "openai"
+    return "gemini"
 
+
+def default_model_for(backend: str) -> str:
+    env_model = os.environ.get("IMAGE_MODEL")
+    if env_model:
+        return env_model
+    return DEFAULT_GEMINI_MODEL if backend == "gemini" else DEFAULT_OPENAI_MODEL
+
+
+def resolve_base_url(base_url: str | None) -> str:
+    base = (
+        base_url
+        or os.environ.get("OPENAI_BASE_URL")
+        or os.environ.get("IMAGE_API_BASE_URL")
+        or DEFAULT_OPENAI_BASE
+    )
+    return base.rstrip("/")
+
+
+def resolve_api_key(backend: str, api_key: str | None) -> str:
+    if api_key:
+        return api_key
+    if backend == "gemini":
+        key = (
+            os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("IMAGE_API_KEY")
+        )
+        if not key:
+            _die("No Gemini key. Set GEMINI_API_KEY (or GOOGLE_API_KEY / IMAGE_API_KEY) or pass --api-key.")
+    else:
+        key = os.environ.get("OPENAI_API_KEY") or os.environ.get("IMAGE_API_KEY")
+        if not key:
+            _die("No OpenAI key. Set OPENAI_API_KEY (or IMAGE_API_KEY) or pass --api-key.")
+    return key
+
+
+# ---------------------------------------------------------------------------
+# Image post-processing (chroma key + downscale)
+# ---------------------------------------------------------------------------
 
 def _apply_chroma_key(img, fuzz: int = DEFAULT_FUZZ):
-    """Remove green (#00FF00) background pixels from a PIL RGBA image in-place.
-    Returns the modified image."""
+    """Remove green (#00FF00) background pixels from a PIL RGBA image."""
     data = list(img.getdata())
     new_data = []
     removed = 0
@@ -79,206 +182,505 @@ def _apply_chroma_key(img, fuzz: int = DEFAULT_FUZZ):
     return img, removed
 
 
-def ensure_deps():
-    """Check that required packages are available."""
-    try:
-        from google import genai  # noqa: F401
-    except ImportError:
-        print("ERROR: 'google-genai' package not found.", file=sys.stderr)
-        print("Install with: pip install google-genai Pillow", file=sys.stderr)
-        sys.exit(1)
+def _postprocess_and_save(
+    img,
+    output_path: str,
+    chroma_key: bool,
+    fuzz: int,
+    downscale: int | None,
+    log_prefix: str = "  ",
+):
+    """Shared save path: optional chroma key, optional NN downscale, write PNG."""
+    from PIL import Image as PILImage
+
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
+
+    if chroma_key:
+        img, removed = _apply_chroma_key(img, fuzz=fuzz)
+        total = img.width * img.height
+        pct = removed * 100.0 / total if total else 0
+        print(f"{log_prefix}Chroma-key: removed {removed} green pixels ({pct:.1f}%)")
+
+    if downscale and downscale > 0:
+        img = img.resize((downscale, downscale), PILImage.NEAREST)
+        print(f"{log_prefix}Downscaled to {downscale}x{downscale}")
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(str(out), "PNG")
+    print(f"{log_prefix}Saved: {out}")
+
+
+def _bytes_to_image(raw: bytes):
+    from PIL import Image as PILImage
+
+    return PILImage.open(io.BytesIO(raw)).convert("RGBA")
+
+
+# ---------------------------------------------------------------------------
+# Dependency checks
+# ---------------------------------------------------------------------------
+
+def ensure_pillow():
     try:
         from PIL import Image  # noqa: F401
     except ImportError:
-        print("ERROR: 'Pillow' package not found.", file=sys.stderr)
-        print("Install with: pip install Pillow", file=sys.stderr)
-        sys.exit(1)
+        _die("'Pillow' not found. Install with: pip install Pillow  (or use `uv run --with Pillow ...`)")
 
 
-def get_client():
-    """Create Gemini client, reading API key from environment."""
-    from google import genai
+def ensure_gemini():
+    try:
+        from google import genai  # noqa: F401
+    except ImportError:
+        _die("'google-genai' not found. Install with: pip install google-genai  (or `uv run --with google-genai ...`)")
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("ERROR: GEMINI_API_KEY not set.", file=sys.stderr)
-        print(
-            "Set it in your project .env file or as an environment variable.",
-            file=sys.stderr,
+
+# ---------------------------------------------------------------------------
+# OpenAI Images API backend (HTTP, no SDK dependency)
+# ---------------------------------------------------------------------------
+
+def _is_retryable_body(detail: str) -> bool:
+    """Some gateways return 200/4xx envelopes whose body signals a rate limit."""
+    low = detail.lower()
+    return "rate_limit" in low or "rate limit" in low or "try again" in low
+
+
+def _send_with_retry(req: urllib.request.Request, url: str, max_retries: int | None = None) -> dict:
+    """POST with exponential backoff on transient upstream failures (incl. 502-wrapped rate limits)."""
+    import time
+
+    if max_retries is None:
+        max_retries = MAX_RETRIES
+    last_err = ""
+    for attempt in range(max_retries):
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")
+            last_err = f"HTTP {e.code} from {url}: {detail[:500]}"
+            retryable = e.code in RETRY_STATUS or _is_retryable_body(detail)
+            if not retryable or attempt == max_retries - 1:
+                _die(last_err)
+        except urllib.error.URLError as e:
+            last_err = f"Request to {url} failed: {e.reason}"
+            if attempt == max_retries - 1:
+                _die(last_err)
+        backoff = min(2 ** attempt, 16)
+        print(f"  Transient failure (attempt {attempt + 1}/{max_retries}); retrying in {backoff}s...", file=sys.stderr)
+        time.sleep(backoff)
+    _die(last_err)
+    return {}
+
+
+def _http_post_json(url: str, api_key: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=body, method="POST")
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("User-Agent", USER_AGENT)
+    req.add_header("Accept", "application/json")
+    return _send_with_retry(req, url)
+
+
+def _http_post_multipart(url: str, api_key: str, fields: dict, files: list[tuple[str, Path]]) -> dict:
+    boundary = f"----gameasset{uuid.uuid4().hex}"
+    parts: list[bytes] = []
+
+    for name, value in fields.items():
+        if value is None:
+            continue
+        parts.append(f"--{boundary}\r\n".encode())
+        parts.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+        parts.append(f"{value}\r\n".encode())
+
+    for name, path in files:
+        mime = mimetypes.guess_type(path.name)[0] or "image/png"
+        parts.append(f"--{boundary}\r\n".encode())
+        parts.append(
+            f'Content-Disposition: form-data; name="{name}"; filename="{path.name}"\r\n'.encode()
         )
-        sys.exit(1)
-    return genai.Client(api_key=api_key)
+        parts.append(f"Content-Type: {mime}\r\n\r\n".encode())
+        parts.append(path.read_bytes())
+        parts.append(b"\r\n")
+
+    parts.append(f"--{boundary}--\r\n".encode())
+    body = b"".join(parts)
+
+    req = urllib.request.Request(url, data=body, method="POST")
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+    req.add_header("User-Agent", USER_AGENT)
+    req.add_header("Accept", "application/json")
+    return _send_with_retry(req, url)
 
 
-def generate_image(
+def _extract_b64_images(obj) -> list[bytes]:
+    """Walk an arbitrary OpenAI-style response and collect all b64 image payloads.
+
+    Handles Images API ({"data":[{"b64_json":...}]}) and Responses API
+    (output items of type image_generation_call with a 'result' field)."""
+    found: list[bytes] = []
+
+    def visit(node):
+        if isinstance(node, dict):
+            for key in ("b64_json", "result"):
+                val = node.get(key)
+                if isinstance(val, str) and len(val) > 100:
+                    try:
+                        found.append(base64.b64decode(val))
+                    except Exception:
+                        pass
+            for v in node.values():
+                visit(v)
+        elif isinstance(node, list):
+            for v in node:
+                visit(v)
+
+    visit(obj)
+    return found
+
+
+def _fetch_url_images(obj) -> list[bytes]:
+    """Fallback for backends that return image URLs instead of b64."""
+    urls: list[str] = []
+
+    def visit(node):
+        if isinstance(node, dict):
+            u = node.get("url")
+            if isinstance(u, str) and u.startswith("http"):
+                urls.append(u)
+            for v in node.values():
+                visit(v)
+        elif isinstance(node, list):
+            for v in node:
+                visit(v)
+
+    visit(obj)
+    out: list[bytes] = []
+    for u in urls:
+        try:
+            dl = urllib.request.Request(u, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(dl, timeout=120) as r:
+                out.append(r.read())
+        except Exception as e:
+            print(f"  WARNING: failed to download {u}: {e}", file=sys.stderr)
+    return out
+
+
+def openai_generate(
     prompt: str,
-    output_path: str = "output.png",
-    model: str = DEFAULT_MODEL,
-    aspect_ratio: str = "1:1",
-    dry_run: bool = False,
-    downscale: int | None = None,
-    auto_chroma_key: bool = True,
-    fuzz: int = DEFAULT_FUZZ,
-):
-    """Generate a single image from a text prompt.
-    By default, auto-removes green (#00FF00) background (disable with auto_chroma_key=False for backgrounds).
-    """
-    if dry_run:
-        ck_label = "ON" if auto_chroma_key else "OFF"
-        print(f"[DRY RUN] model={model}, aspect_ratio={aspect_ratio}, chroma_key={ck_label}")
-        print(f"[DRY RUN] prompt: {prompt[:200]}...")
-        print(f"[DRY RUN] output: {output_path}")
-        return
+    base_url: str,
+    api_key: str,
+    model: str,
+    size: str,
+    background: str | None,
+    n: int = 1,
+) -> list[bytes]:
+    payload: dict = {"model": model, "prompt": prompt, "n": n}
+    if size and size != "auto":
+        payload["size"] = size
+    # gpt-image-* support transparent background + output_format; dall-e does not.
+    if model.lower().startswith("gpt-image"):
+        if background:
+            payload["background"] = background
+        payload["output_format"] = "png"
+    elif background == "transparent":
+        # dall-e cannot do transparency; request b64 and rely on later cutout.
+        payload["response_format"] = "b64_json"
+    resp = _http_post_json(f"{base_url}/images/generations", api_key, payload)
+    images = _extract_b64_images(resp) or _fetch_url_images(resp)
+    if not images:
+        _die(f"No image in response: {json.dumps(resp)[:400]}")
+    return images
 
+
+def openai_edit(
+    prompt: str,
+    image_paths: list[Path],
+    mask_path: Path | None,
+    base_url: str,
+    api_key: str,
+    model: str,
+    size: str,
+    background: str | None,
+    n: int = 1,
+) -> list[bytes]:
+    fields: dict = {"model": model, "prompt": prompt, "n": str(n)}
+    if size and size != "auto":
+        fields["size"] = size
+    if model.lower().startswith("gpt-image"):
+        if background:
+            fields["background"] = background
+        fields["output_format"] = "png"
+    files: list[tuple[str, Path]] = []
+    # gpt-image-1 accepts multiple input images via image[]; dall-e accepts one image.
+    field_name = "image[]" if model.lower().startswith("gpt-image") else "image"
+    for p in image_paths:
+        files.append((field_name, p))
+    if mask_path:
+        files.append(("mask", mask_path))
+    resp = _http_post_multipart(f"{base_url}/images/edits", api_key, fields, files)
+    images = _extract_b64_images(resp) or _fetch_url_images(resp)
+    if not images:
+        _die(f"No image in edit response: {json.dumps(resp)[:400]}")
+    return images
+
+
+def openai_responses_generate(
+    prompt: str,
+    base_url: str,
+    api_key: str,
+    model: str,
+    size: str,
+    background: str | None,
+    input_images: list[Path] | None = None,
+) -> list[bytes]:
+    """OpenAI Responses API with the image_generation tool (POST {base}/responses)."""
+    tool: dict = {"type": "image_generation"}
+    if size and size != "auto":
+        tool["size"] = size
+    if background:
+        tool["background"] = background
+
+    if input_images:
+        content: list[dict] = [{"type": "input_text", "text": prompt}]
+        for p in input_images:
+            mime = mimetypes.guess_type(p.name)[0] or "image/png"
+            b64 = base64.b64encode(p.read_bytes()).decode()
+            content.append({"type": "input_image", "image_url": f"data:{mime};base64,{b64}"})
+        payload: dict = {"model": model, "input": [{"role": "user", "content": content}], "tools": [tool]}
+    else:
+        payload = {"model": model, "input": prompt, "tools": [tool]}
+
+    resp = _http_post_json(f"{base_url}/responses", api_key, payload)
+    images = _extract_b64_images(resp) or _fetch_url_images(resp)
+    if not images:
+        _die(f"No image in responses output: {json.dumps(resp)[:400]}")
+    return images
+
+
+# ---------------------------------------------------------------------------
+# Gemini backend (google-genai SDK)
+# ---------------------------------------------------------------------------
+
+def gemini_generate(
+    prompt: str,
+    api_key: str,
+    model: str,
+    aspect_ratio: str,
+    input_images: list[Path] | None = None,
+) -> list[bytes]:
+    from google import genai
     from google.genai import types
-    from PIL import Image as PILImage
 
-    client = get_client()
-
-    print(f"Generating image with {model}...")
-    print(f"  Prompt: {prompt[:120]}...")
+    client = genai.Client(api_key=api_key)
+    contents: list = [prompt]
+    for p in (input_images or []):
+        mime = mimetypes.guess_type(p.name)[0] or "image/png"
+        contents.append(types.Part.from_bytes(data=p.read_bytes(), mime_type=mime))
 
     response = client.models.generate_content(
         model=model,
-        contents=[prompt],
+        contents=contents,
         config=types.GenerateContentConfig(
             response_modalities=["Image"],
-            image_config=types.ImageConfig(
-                aspect_ratio=aspect_ratio,
-            ),
+            image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
         ),
     )
 
-    # Extract image from response
-    image_saved = False
+    images: list[bytes] = []
     for part in response.parts:
-        if part.inline_data is not None:
-            import io
-            img = PILImage.open(io.BytesIO(part.inline_data.data)).convert("RGBA")
-
-            # Auto chroma-key: remove green background
-            if auto_chroma_key:
-                img, removed = _apply_chroma_key(img, fuzz=fuzz)
-                total = img.width * img.height
-                pct = removed * 100.0 / total if total else 0
-                print(f"  Chroma-key: removed {removed} green pixels ({pct:.1f}%)")
-
-            # Optional downscale (nearest-neighbor for pixel art)
-            if downscale and downscale > 0:
-                img = img.resize((downscale, downscale), PILImage.NEAREST)
-                print(f"  Downscaled to {downscale}x{downscale}")
-
-            out = Path(output_path)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            img.save(str(out), "PNG")
-            print(f"  Saved: {out}")
-            image_saved = True
-            break
-        elif part.text is not None:
+        if getattr(part, "inline_data", None) is not None:
+            images.append(part.inline_data.data)
+        elif getattr(part, "text", None):
             print(f"  Model text: {part.text}")
+    if not images:
+        _die("Gemini returned no image (the model may have declined the prompt).")
+    return images
 
-    if not image_saved:
-        print("WARNING: No image was generated. The model may have declined the prompt.", file=sys.stderr)
+
+# ---------------------------------------------------------------------------
+# Unified single-image entry point
+# ---------------------------------------------------------------------------
+
+def run_generate(args, prompt: str, out_path: str, input_images: list[Path] | None = None):
+    backend = resolve_backend(args.backend, args.model, args.base_url)
+    model = args.model or default_model_for(backend)
+    chroma = _should_chroma_key(args, backend)
+
+    if args.dry_run:
+        print(f"[DRY RUN] backend={backend} model={model} chroma_key={'ON' if chroma else 'OFF'}")
+        print(f"[DRY RUN] out={out_path}")
+        print(f"[DRY RUN] prompt: {prompt[:200]}")
+        if input_images:
+            print(f"[DRY RUN] input_images: {[str(p) for p in input_images]}")
+        return
+
+    ensure_pillow()
+    api_key = resolve_api_key(backend, args.api_key)
+    background = _resolve_background(args, backend)
+
+    print(f"Generating with backend={backend}, model={model}...")
+    print(f"  Prompt: {prompt[:120]}...")
+
+    if backend == "gemini":
+        ensure_gemini()
+        raw_list = gemini_generate(prompt, api_key, model, args.aspect_ratio, input_images)
+    elif backend == "openai-responses":
+        base = resolve_base_url(args.base_url)
+        raw_list = openai_responses_generate(prompt, base, api_key, model, args.size, background, input_images)
+    else:  # openai
+        base = resolve_base_url(args.base_url)
+        if input_images:
+            raw_list = openai_edit(prompt, input_images, None, base, api_key, model, args.size, background)
+        else:
+            raw_list = openai_generate(prompt, base, api_key, model, args.size, background)
+
+    _save_results(raw_list, out_path, chroma, args.fuzz, args.downscale)
+
+
+def _save_results(raw_list, out_path, chroma, fuzz, downscale):
+    if len(raw_list) == 1:
+        _postprocess_and_save(_bytes_to_image(raw_list[0]), out_path, chroma, fuzz, downscale)
+    else:
+        stem = Path(out_path)
+        for i, raw in enumerate(raw_list):
+            numbered = stem.with_name(f"{stem.stem}_{i:02d}{stem.suffix}")
+            _postprocess_and_save(_bytes_to_image(raw), str(numbered), chroma, fuzz, downscale)
+
+
+def _should_chroma_key(args, backend: str) -> bool:
+    if args.chroma_key == "on":
+        return True
+    if args.chroma_key == "off":
         return False
-    return True
+    # auto: only Gemini (no transparent mode) needs green keying by default.
+    return backend == "gemini"
 
 
-def generate_batch(
-    input_path: str,
-    out_dir: str = "output",
-    model: str = DEFAULT_MODEL,
-    concurrency: int = 3,
-    dry_run: bool = False,
-    auto_chroma_key: bool = True,
-    fuzz: int = DEFAULT_FUZZ,
-):
-    """Generate images from a JSONL file (one job per line).
-    By default, auto-removes green background. Per-job override: set "chroma_key": false in JSONL.
-    """
+def _resolve_background(args, backend: str) -> str | None:
+    if backend == "gemini":
+        return None  # Gemini has no transparent control.
+    if args.background:
+        return args.background
+    return "transparent" if args.transparent else "opaque"
+
+
+# ---------------------------------------------------------------------------
+# Subcommand handlers
+# ---------------------------------------------------------------------------
+
+def cmd_generate(args):
+    run_generate(args, args.prompt, args.out)
+
+
+def cmd_edit(args):
+    images = [Path(p) for p in args.image]
+    for p in images:
+        if not p.is_file():
+            _die(f"Input image not found: {p}")
+    backend = resolve_backend(args.backend, args.model, args.base_url)
+    model = args.model or default_model_for(backend)
+    chroma = _should_chroma_key(args, backend)
+
+    if args.dry_run:
+        print(f"[DRY RUN] EDIT backend={backend} model={model}")
+        print(f"[DRY RUN] images={[str(p) for p in images]} mask={args.mask}")
+        print(f"[DRY RUN] prompt: {args.prompt[:200]}")
+        return
+
+    ensure_pillow()
+    api_key = resolve_api_key(backend, args.api_key)
+    background = _resolve_background(args, backend)
+
+    if backend == "gemini":
+        ensure_gemini()
+        raw_list = gemini_generate(args.prompt, api_key, model, args.aspect_ratio, images)
+    elif backend == "openai-responses":
+        base = resolve_base_url(args.base_url)
+        raw_list = openai_responses_generate(args.prompt, base, api_key, model, args.size, background, images)
+    else:
+        base = resolve_base_url(args.base_url)
+        mask = Path(args.mask) if args.mask else None
+        if mask and not mask.is_file():
+            _die(f"Mask not found: {mask}")
+        raw_list = openai_edit(args.prompt, images, mask, base, api_key, model, args.size, background)
+
+    _save_results(raw_list, args.out, chroma, args.fuzz, args.downscale)
+
+
+def cmd_generate_batch(args):
     jobs = []
-    with open(input_path, encoding="utf-8") as f:
+    with open(args.input, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
                 jobs.append(json.loads(line))
 
-    ck_label = "ON" if auto_chroma_key else "OFF"
-    print(f"Loaded {len(jobs)} jobs from {input_path}")
-    print(f"Model: {model}, Concurrency: {concurrency}, Chroma-key: {ck_label}")
-    print(f"Output dir: {out_dir}")
+    print(f"Loaded {len(jobs)} jobs from {args.input}")
 
-    if dry_run:
+    if args.dry_run:
         for i, job in enumerate(jobs):
-            out_name = job.get("out_name", f"output-{i:03d}.png")
-            job_ck = job.get("chroma_key", auto_chroma_key)
-            ck_str = "CK" if job_ck else "no-CK"
-            print(f"  [DRY RUN] [{i}] {out_name} ({ck_str}): {job['prompt'][:80]}...")
+            out_name = job.get("out_name", f"output_{i:03d}.png")
+            print(f"  [DRY RUN] [{i}] {out_name}: {job['prompt'][:80]}...")
         return
 
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
-    client = get_client()
+    ensure_pillow()
+    Path(args.out_dir).mkdir(parents=True, exist_ok=True)
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def _gen(idx_job):
         idx, job = idx_job
-        from google.genai import types
-        from PIL import Image as PILImage
-
         prompt = job["prompt"]
-        job_model = job.get("model", model)
-        aspect = job.get("aspect_ratio", "1:1")
-        downscale = job.get("downscale", None)
-        job_chroma_key = job.get("chroma_key", auto_chroma_key)
-        job_fuzz = job.get("fuzz", fuzz)
-        out_name = job.get("out_name", f"output-{idx:03d}.png")
-        out_path = Path(out_dir) / out_name
+        model = job.get("model", args.model)
+        backend = resolve_backend(job.get("backend", args.backend), model, args.base_url)
+        model = model or default_model_for(backend)
+        out_name = job.get("out_name", f"output_{idx:03d}.png")
+        out_path = Path(args.out_dir) / out_name
+        downscale = job.get("downscale", args.downscale)
+        fuzz = job.get("fuzz", args.fuzz)
+        aspect = job.get("aspect_ratio", args.aspect_ratio)
+        size = job.get("size", args.size)
+        input_images = [Path(p) for p in job.get("input_images", [])]
 
-        print(f"  [{idx}] Generating: {prompt[:80]}...")
+        # Per-job chroma override; else auto by backend.
+        if "chroma_key" in job:
+            chroma = bool(job["chroma_key"])
+        else:
+            chroma = _should_chroma_key(args, backend)
 
         try:
-            response = client.models.generate_content(
-                model=job_model,
-                contents=[prompt],
-                config=types.GenerateContentConfig(
-                    response_modalities=["Image"],
-                    image_config=types.ImageConfig(
-                        aspect_ratio=aspect,
-                    ),
-                ),
-            )
+            api_key = resolve_api_key(backend, args.api_key)
+            if backend == "gemini":
+                ensure_gemini()
+                raw_list = gemini_generate(prompt, api_key, model, aspect, input_images or None)
+            elif backend == "openai-responses":
+                base = resolve_base_url(args.base_url)
+                bg = job.get("background", "transparent" if args.transparent else "opaque")
+                raw_list = openai_responses_generate(prompt, base, api_key, model, size, bg, input_images or None)
+            else:
+                base = resolve_base_url(args.base_url)
+                bg = job.get("background", "transparent" if args.transparent else "opaque")
+                if input_images:
+                    raw_list = openai_edit(prompt, input_images, None, base, api_key, model, size, bg)
+                else:
+                    raw_list = openai_generate(prompt, base, api_key, model, size, bg)
 
-            for part in response.parts:
-                if part.inline_data is not None:
-                    import io
-                    img = PILImage.open(io.BytesIO(part.inline_data.data)).convert("RGBA")
-
-                    # Auto chroma-key
-                    if job_chroma_key:
-                        img, removed = _apply_chroma_key(img, fuzz=job_fuzz)
-                        total = img.width * img.height
-                        pct = removed * 100.0 / total if total else 0
-                        print(f"  [{idx}] Chroma-key: removed {removed} green px ({pct:.1f}%)")
-
-                    if downscale and downscale > 0:
-                        img = img.resize((downscale, downscale), PILImage.NEAREST)
-                    out_path.parent.mkdir(parents=True, exist_ok=True)
-                    img.save(str(out_path), "PNG")
-                    print(f"  [{idx}] Saved: {out_path}")
-                    return True
-                elif part.text is not None:
-                    print(f"  [{idx}] Model text: {part.text}")
-
-            print(f"  [{idx}] WARNING: No image generated", file=sys.stderr)
+            _save_results(raw_list, str(out_path), chroma, fuzz, downscale)
+            print(f"  [{idx}] OK {out_path}")
+            return True
+        except SystemExit as e:
+            print(f"  [{idx}] FAILED: {e}", file=sys.stderr)
             return False
-
         except Exception as e:
             print(f"  [{idx}] ERROR: {e}", file=sys.stderr)
             return False
 
-    success = 0
-    failed = 0
-    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+    success = failed = 0
+    with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
         futures = {pool.submit(_gen, (i, job)): i for i, job in enumerate(jobs)}
         for future in as_completed(futures):
             if future.result():
@@ -286,56 +688,33 @@ def generate_batch(
             else:
                 failed += 1
 
-    print(f"\nBatch complete: {success} succeeded, {failed} failed out of {len(jobs)} total")
+    print(f"\nBatch complete: {success} succeeded, {failed} failed of {len(jobs)} total")
 
 
-def chroma_key(
-    input_path: str,
-    output_path: str | None = None,
-    fuzz: int = DEFAULT_FUZZ,
-    downscale: int | None = None,
-):
-    """Remove green (#00FF00) background and optionally downscale."""
+def cmd_chroma_key(args):
+    ensure_pillow()
     from PIL import Image as PILImage
 
-    if output_path is None:
-        p = Path(input_path)
-        output_path = str(p.parent / f"{p.stem}_keyed{p.suffix}")
-
-    img = PILImage.open(input_path).convert("RGBA")
-    img, removed = _apply_chroma_key(img, fuzz=fuzz)
-    total = img.width * img.height
-    pct = removed * 100.0 / total if total else 0
-
-    if downscale and downscale > 0:
-        img = img.resize((downscale, downscale), PILImage.NEAREST)
-        print(f"  Downscaled to {downscale}x{downscale}")
-
-    out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    img.save(str(out), "PNG")
-    print(f"  Saved: {out} (removed {removed} green px, {pct:.1f}%)")
+    out = args.out
+    if out is None:
+        p = Path(args.input)
+        out = str(p.parent / f"{p.stem}_keyed{p.suffix}")
+    img = PILImage.open(args.input).convert("RGBA")
+    _postprocess_and_save(img, out, True, args.fuzz, args.downscale)
 
 
-def chroma_key_dir(
-    input_dir: str,
-    output_dir: str | None = None,
-    fuzz: int = 30,
-    downscale: int | None = None,
-):
-    """Chroma key all PNGs in a directory."""
-    in_dir = Path(input_dir)
-    out_dir = Path(output_dir) if output_dir else in_dir / "keyed"
+def cmd_chroma_key_dir(args):
+    ensure_pillow()
+    from PIL import Image as PILImage
+
+    in_dir = Path(args.input_dir)
+    out_dir = Path(args.output_dir) if args.output_dir else in_dir / "keyed"
     out_dir.mkdir(parents=True, exist_ok=True)
-
     pngs = sorted(in_dir.glob("*.png"))
     print(f"Processing {len(pngs)} PNGs from {in_dir}...")
-
     for png in pngs:
-        out_path = out_dir / png.name
-        print(f"  {png.name}...", end="")
-        chroma_key(str(png), str(out_path), fuzz=fuzz, downscale=downscale)
-
+        img = PILImage.open(str(png)).convert("RGBA")
+        _postprocess_and_save(img, str(out_dir / png.name), True, args.fuzz, args.downscale)
     print(f"Done. Output in {out_dir}")
 
 
@@ -343,144 +722,117 @@ def chroma_key_dir(
 # CLI
 # ---------------------------------------------------------------------------
 
+def _add_backend_args(p, with_aspect=True):
+    p.add_argument(
+        "--backend",
+        default="auto",
+        choices=["auto", "openai", "openai-responses", "gemini"],
+        help="Request backend. auto = infer from model/base-url (default: auto).",
+    )
+    p.add_argument("--base-url", default=None, help="Custom OpenAI-compatible base URL, e.g. https://gw/v1")
+    p.add_argument("--model", default=None, help="Model name, e.g. gpt-image-2, gpt-image-1, gemini-2.5-flash-image")
+    p.add_argument("--api-key", default=None, help="Explicit API key (else read from env)")
+    p.add_argument("--size", default="1024x1024", help="OpenAI image size, e.g. 1024x1024 or 'auto' (default: 1024x1024)")
+    if with_aspect:
+        p.add_argument("--aspect-ratio", default="1:1", help="Gemini aspect ratio (default: 1:1)")
+    p.add_argument(
+        "--background",
+        default=None,
+        choices=["transparent", "opaque", "auto"],
+        help="OpenAI gpt-image background mode (overrides --transparent).",
+    )
+    p.add_argument("--transparent", action="store_true", default=True, help="Request transparent bg on OpenAI (default ON)")
+    p.add_argument("--no-transparent", action="store_false", dest="transparent", help="Disable transparent request")
+    p.add_argument(
+        "--chroma-key",
+        default="auto",
+        choices=["auto", "on", "off"],
+        help="Green-screen removal. auto = on for Gemini, off for OpenAI (default: auto).",
+    )
+    p.add_argument("--fuzz", type=int, default=DEFAULT_FUZZ, help=f"Chroma-key tolerance (default: {DEFAULT_FUZZ})")
+    p.add_argument("--downscale", type=int, default=None, help="Downscale to NxN nearest-neighbor (pixel art)")
+    p.add_argument(
+        "--max-retries",
+        type=int,
+        default=DEFAULT_MAX_RETRIES,
+        help=f"HTTP retries on transient/rate-limit failures (default: {DEFAULT_MAX_RETRIES}). "
+        "Raise this for gateways with saturated shared keys.",
+    )
+    p.add_argument("--dry-run", action="store_true", help="Print the request without calling any API")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Game Asset Generator — generate pixel art via Gemini API",
+        description="Game Asset Generator — multi-provider (OpenAI / Gemini) image generation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
-  # Generate a single asset
-  python generate_asset.py generate --prompt "chibi pixel art warrior..." --out art/player/warrior/idle_00.png
+  # OpenAI gpt-image-2, transparent PNG, no chroma key needed
+  python generate_asset.py generate --backend openai --model gpt-image-2 \\
+    --prompt "front-facing hero base body, T-pose, transparent background" \\
+    --out art/hero/base.png
 
-  # Batch generate from JSONL
-  python generate_asset.py generate-batch --input frames.jsonl --out-dir tmp/raw/
+  # Custom OpenAI-compatible gateway
+  python generate_asset.py generate --base-url https://my-gw/v1 --model gpt-image-2 \\
+    --prompt "..." --out out.png
 
-  # Remove green background
-  python generate_asset.py chroma-key --input raw.png --out clean.png --downscale 48
+  # OpenAI Responses API (image_generation tool)
+  python generate_asset.py generate --backend openai-responses --model gpt-5 \\
+    --prompt "..." --out out.png
 
-  # Chroma key entire directory
-  python generate_asset.py chroma-key-dir --input-dir tmp/raw/ --output-dir art/player/warrior/ --downscale 48
+  # Gemini pixel-art sprite on green, auto chroma-keyed + downscaled
+  python generate_asset.py generate --backend gemini \\
+    --prompt "chibi pixel warrior, 48x48, solid #00FF00 background" \\
+    --out art/player/idle_00.png --downscale 48
+
+  # Paper-doll: edit a base body to add an equipment layer (keeps pose/anchor)
+  python generate_asset.py edit --backend openai --model gpt-image-2 \\
+    --image art/hero/base.png --prompt "same character wearing steel plate armor" \\
+    --out art/hero/armor_steel.png
 """,
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # --- generate ---
-    gen_p = sub.add_parser(
-        "generate", help="Generate a single image (auto chroma-key by default)"
-    )
-    gen_p.add_argument("--prompt", required=True, help="Text prompt")
-    gen_p.add_argument(
-        "--out", default="output.png", help="Output file path (default: output.png)"
-    )
-    gen_p.add_argument(
-        "--model", default=DEFAULT_MODEL, help=f"Gemini model (default: {DEFAULT_MODEL})"
-    )
-    gen_p.add_argument("--aspect-ratio", default="1:1", help="Aspect ratio (default: 1:1)")
-    gen_p.add_argument(
-        "--downscale",
-        type=int,
-        default=None,
-        help="Downscale to NxN pixels (nearest-neighbor)",
-    )
-    gen_p.add_argument(
-        "--no-chroma-key",
-        action="store_true",
-        help="Skip basic green background removal; recommended when using smart_remove_bg.py afterward",
-    )
-    gen_p.add_argument(
-        "--fuzz",
-        type=int,
-        default=DEFAULT_FUZZ,
-        help=f"Chroma-key color tolerance (default: {DEFAULT_FUZZ})",
-    )
-    gen_p.add_argument("--dry-run", action="store_true", help="Print prompt without calling API")
+    g = sub.add_parser("generate", help="Generate a single image from a prompt")
+    g.add_argument("--prompt", required=True)
+    g.add_argument("--out", default="output.png")
+    _add_backend_args(g)
+    g.set_defaults(func=cmd_generate)
 
-    # --- generate-batch ---
-    batch_p = sub.add_parser(
-        "generate-batch",
-        help="Batch generate from JSONL (auto chroma-key by default)",
-    )
-    batch_p.add_argument("--input", required=True, help="JSONL file with one job per line")
-    batch_p.add_argument("--out-dir", default="output", help="Output directory (default: output/)")
-    batch_p.add_argument(
-        "--model", default=DEFAULT_MODEL, help=f"Default model (default: {DEFAULT_MODEL})"
-    )
-    batch_p.add_argument("--concurrency", type=int, default=3, help="Max concurrent requests (default: 3)")
-    batch_p.add_argument(
-        "--no-chroma-key",
-        action="store_true",
-        help="Skip basic green background removal for all jobs; recommended when using smart_remove_bg.py afterward",
-    )
-    batch_p.add_argument(
-        "--fuzz",
-        type=int,
-        default=DEFAULT_FUZZ,
-        help=f"Chroma-key color tolerance (default: {DEFAULT_FUZZ})",
-    )
-    batch_p.add_argument("--dry-run", action="store_true", help="Print jobs without calling API")
+    e = sub.add_parser("edit", help="Edit/extend image(s) with a prompt (paper-doll, consistency)")
+    e.add_argument("--prompt", required=True)
+    e.add_argument("--image", required=True, action="append", help="Input image (repeat for multiple)")
+    e.add_argument("--mask", default=None, help="Optional mask PNG (OpenAI edits): transparent = area to change")
+    e.add_argument("--out", default="output.png")
+    _add_backend_args(e)
+    e.set_defaults(func=cmd_edit)
 
-    # --- chroma-key ---
-    ck_p = sub.add_parser("chroma-key", help="Remove green background from an image")
-    ck_p.add_argument("--input", required=True, help="Input PNG file")
-    ck_p.add_argument("--out", default=None, help="Output file (default: input_keyed.png)")
-    ck_p.add_argument("--fuzz", type=int, default=30, help="Color tolerance (0-255, default: 30)")
-    ck_p.add_argument("--downscale", type=int, default=None, help="Downscale to NxN pixels")
+    b = sub.add_parser("generate-batch", help="Batch generate from a JSONL file")
+    b.add_argument("--input", required=True, help="JSONL with one job per line")
+    b.add_argument("--out-dir", default="output")
+    b.add_argument("--concurrency", type=int, default=3)
+    _add_backend_args(b)
+    b.set_defaults(func=cmd_generate_batch)
 
-    # --- chroma-key-dir ---
-    ckd_p = sub.add_parser("chroma-key-dir", help="Chroma key all PNGs in a directory")
-    ckd_p.add_argument("--input-dir", required=True, help="Input directory")
-    ckd_p.add_argument("--output-dir", default=None, help="Output directory (default: input_dir/keyed/)")
-    ckd_p.add_argument("--fuzz", type=int, default=30, help="Color tolerance (0-255, default: 30)")
-    ckd_p.add_argument("--downscale", type=int, default=None, help="Downscale to NxN pixels")
+    ck = sub.add_parser("chroma-key", help="Remove green background from one image")
+    ck.add_argument("--input", required=True)
+    ck.add_argument("--out", default=None)
+    ck.add_argument("--fuzz", type=int, default=DEFAULT_FUZZ)
+    ck.add_argument("--downscale", type=int, default=None)
+    ck.set_defaults(func=cmd_chroma_key)
+
+    ckd = sub.add_parser("chroma-key-dir", help="Remove green background from a directory of PNGs")
+    ckd.add_argument("--input-dir", required=True)
+    ckd.add_argument("--output-dir", default=None)
+    ckd.add_argument("--fuzz", type=int, default=DEFAULT_FUZZ)
+    ckd.add_argument("--downscale", type=int, default=None)
+    ckd.set_defaults(func=cmd_chroma_key_dir)
 
     args = parser.parse_args()
-
-    # Load .env from project root
     load_dotenv()
-
-    if args.command == "generate":
-        if not args.dry_run:
-            ensure_deps()
-        generate_image(
-            prompt=args.prompt,
-            output_path=args.out,
-            model=args.model,
-            aspect_ratio=args.aspect_ratio,
-            dry_run=args.dry_run,
-            downscale=args.downscale,
-            auto_chroma_key=not args.no_chroma_key,
-            fuzz=args.fuzz,
-        )
-
-    elif args.command == "generate-batch":
-        if not args.dry_run:
-            ensure_deps()
-        generate_batch(
-            input_path=args.input,
-            out_dir=args.out_dir,
-            model=args.model,
-            concurrency=args.concurrency,
-            dry_run=args.dry_run,
-            auto_chroma_key=not args.no_chroma_key,
-            fuzz=args.fuzz,
-        )
-
-    elif args.command == "chroma-key":
-        from PIL import Image as PILImage  # noqa: F401
-        chroma_key(
-            input_path=args.input,
-            output_path=args.out,
-            fuzz=args.fuzz,
-            downscale=args.downscale,
-        )
-
-    elif args.command == "chroma-key-dir":
-        from PIL import Image as PILImage  # noqa: F401
-        chroma_key_dir(
-            input_dir=args.input_dir,
-            output_dir=args.output_dir,
-            fuzz=args.fuzz,
-            downscale=args.downscale,
-        )
+    global MAX_RETRIES
+    if getattr(args, "max_retries", None):
+        MAX_RETRIES = args.max_retries
+    args.func(args)
 
 
 if __name__ == "__main__":

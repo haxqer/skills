@@ -1,4 +1,4 @@
 interface:
   display_name: "Game Asset Gen"
-  short_description: "Generate retro pixel-art sprites and frame sets"
-  default_prompt: "Use $game-asset-gen to generate or iterate on MapleStory-style or similar pixel-art sprites, item icons, VFX, tiles, UI icons, or short animation frame sequences with the bundled generation and chroma-key cleanup scripts."
+  short_description: "Generate game art via OpenAI or Gemini, ready for cutout/Spine/paper-doll"
+  default_prompt: "Use $game-asset-gen to generate or iterate on 2D game art — characters, monsters, NPCs, equipment, items, VFX, tiles, UI icons, or animation frames — through an OpenAI-compatible (gpt-image-2/gpt-image-1/dall-e) or Gemini backend with custom base-url and model, producing transparent or chroma-keyed cutouts ready for Spine and paper-doll (纸娃娃) systems."

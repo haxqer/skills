@@ -27,14 +27,20 @@ def detect_bg_color(img, sample_size=15):
 def remove_bg_flood_fill(img, bg_color, fuzz=100):
     """
     Remove background using a flood fill algorithm from the borders.
-    This allows a higher fuzz tolerance to remove green halos
-    without destroying the interior of green sprites (like potions),
-    as it stops at the sprite's dark outline.
+    This allows a higher fuzz tolerance to remove background halos
+    without destroying the interior of the sprite (like a green potion
+    on a green screen), as the fill stops at the sprite's dark outline.
+
+    Works for any solid background color (green screen, white, etc.). The
+    extra anti-aliased-halo heuristic only kicks in when the detected
+    background is itself greenish, so it never over-eats non-green art.
     """
     data = img.load()
     w, h = img.size
     br, bg, bb = bg_color
     fuzz_sq = fuzz * fuzz
+    # Only apply the aggressive green-halo eater when the background is green.
+    bg_is_greenish = bg > 120 and bg > br + 25 and bg > bb + 25
 
     # Start points: corners and middle of edges
     q = [
@@ -83,7 +89,7 @@ def remove_bg_flood_fill(img, bg_color, fuzz=100):
         # Condition to remove: color is within fuzz OR it's highly green and low other colors
         # This aggressively eats the green anti-aliased edge (halo)
         is_bg = dr * dr + dg * dg + db * db <= fuzz_sq
-        if not is_bg and g > 30 and g > r + 15 and g > b + 15:
+        if not is_bg and bg_is_greenish and g > 30 and g > r + 15 and g > b + 15:
             # Add a secondary distance check to prevent eating the whole image if g>30
             if dr * dr + dg * dg + db * db <= (fuzz + 120) ** 2:
                 is_bg = True
