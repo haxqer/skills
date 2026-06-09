@@ -74,6 +74,23 @@ These encode the things that most often go wrong. Read
 - **Reuse before reinventing.** Check the existing `components/ui/` and the
   shadcn registry/blocks first. Compose feature components from primitives
   rather than restyling raw HTML.
+- **Use real components, never approximate from memory.** If you cannot run the
+  CLI (no network, sandbox), do not hand-write `div`s "styled to look like"
+  shadcn — that is exactly how output drifts into a generic admin template.
+  Either get the CLI working, copy the actual component source from the registry,
+  or tell the user it isn't installed. Approximations are the #1 cause of "this
+  doesn't look like shadcn."
+- **Do not repaint the palette.** shadcn's look comes from its neutral base color
+  and a near-black `primary` (in `new-york`). Do NOT hard-code brand colors
+  (e.g. a blue `primary`, a dark-navy sidebar) into components or override
+  `--primary`/sidebar tokens with arbitrary values. A dark sidebar + bright-blue
+  buttons is the tell-tale sign the theme was hijacked. Brand color, when needed,
+  goes through the proper token flow — see
+  [references/visual-fidelity.md](references/visual-fidelity.md).
+- **Start app shells from official blocks.** For dashboards, sidebars, and admin
+  consoles, `add` the official blocks (`sidebar-07`, `dashboard-01`, …) and adapt
+  them, instead of assembling a layout by hand. That is how you get the polished
+  ui.shadcn.com look rather than a homemade one.
 - **Compose className with `cn()`.** Use the generated `cn()` helper
   (clsx + tailwind-merge) so conditional and overriding classes merge correctly.
   Keep component variants in `cva` definitions rather than ad-hoc conditionals.
@@ -103,9 +120,14 @@ These encode the things that most often go wrong. Read
 5. **Wire behavior:** forms with react-hook-form + zod, tables with TanStack
    Table, server state with TanStack Query, local UI state with Zustand.
 6. **Theme** with CSS variables and wire dark mode — see
-   [references/theming.md](references/theming.md).
+   [references/theming.md](references/theming.md). Keep the neutral base; do not
+   bolt on a custom palette.
 7. **Validate in a real browser:** run the dev server, exercise the changed flow,
    check the console, responsiveness, and keyboard accessibility.
+8. **Compare against the real thing:** screenshot the result and check it against
+   the equivalent ui.shadcn.com example/block — see
+   [references/visual-fidelity.md](references/visual-fidelity.md). If it reads as
+   "a generic admin template," the look diverged and needs fixing.
 
 ## Reference Routing
 
@@ -119,6 +141,10 @@ These encode the things that most often go wrong. Read
 - Read [references/theming.md](references/theming.md) when working with CSS
   variables, design tokens, base color, or dark mode (`next-themes` /
   `.dark` class).
+- Read [references/visual-fidelity.md](references/visual-fidelity.md) when the
+  output "doesn't look like shadcn," before applying any brand color, when
+  building a dashboard/sidebar/admin shell, or to run the look-comparison check
+  before finishing.
 - Read [references/architecture.md](references/architecture.md) when deciding
   folder structure, routing, state/data layering, or when the project is Next.js
   and you must reason about RSC vs `"use client"` boundaries.
@@ -148,9 +174,15 @@ These encode the things that most often go wrong. Read
 
 ## Check Before You Finish
 
-- Components come from the registry/`components/ui/`, not duplicated by hand.
+- Components come from the registry/`components/ui/`, not duplicated by hand or
+  approximated from memory.
+- The neutral base color and near-black `primary` are intact — no stray brand
+  blues, no hand-painted dark sidebar. Brand color (if any) went through tokens.
+- App shells (sidebar/dashboard) are built from official blocks, not hand-assembled.
 - Accessibility is intact: keyboard navigation, focus, and `aria-*` still work.
 - Dark mode and theming render correctly in both light and dark.
 - The layout is responsive at small and large viewports.
 - The dev server runs and the browser console is free of relevant errors.
 - The changed flow was exercised in a real browser, not just a green build.
+- The screenshot was compared against the equivalent ui.shadcn.com block and
+  reads as shadcn, not as a generic admin template.
