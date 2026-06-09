@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Dev"
+  short_description: "Build, debug, and review React frontends with shadcn/ui"
+  default_prompt: "Use $frontend-dev to scaffold, extend, debug, or review a React web frontend with shadcn/ui as the default component system, including Vite or Next.js setup, Tailwind and theming, dark mode, forms with react-hook-form and zod, TanStack data tables and queries, Zustand state, routing, and accessibility."
