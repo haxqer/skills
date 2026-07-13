@@ -1,0 +1,1 @@
+scenario_id,cohort,execution,knowledge,power_access,resources,time_pattern,policy,build,content_state,attempt_time,rng_matchup,config_version,expected_behavior,target_metric,target_band,guardrail,result,margin_tail,pass,notes

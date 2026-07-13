@@ -1,0 +1,4 @@
+interface:
+  display_name: "Game Balance Design"
+  short_description: "Design complete, testable game numerical systems"
+  default_prompt: "Use $game-balance-design to design or audit this game system from experience targets through formulas, configs, validation, and rollout."
