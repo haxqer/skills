@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prepare Godot Assets"
+  short_description: "Audit, normalize, validate, and index assets for Godot"
+  default_prompt: "Use $prepare-godot-assets to turn this unstructured asset dump into a validated, Godot-ready library with a machine-readable catalog."
