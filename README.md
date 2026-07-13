@@ -26,7 +26,6 @@ generic tooling.
 | `skills/game-asset-gen/` | `game-asset-gen` | Pixel-art sprite, icon, and frame-sequence generation for retro 2D games |
 | `skills/game-remake-research/` | `game-remake-research` | Research-pack workflow for remaking an existing game |
 | `skills/bdd-skill/` | `bdd-skill` | BDD and Gherkin drafting, refinement, and review |
-| `skills/godot/` | `godot` | Godot project development, scene editing, export, and resource repair |
 | `skills/ralph-loop/` | `ralph-loop` | Closed-loop autonomous engineering protocol until done |
 | `skills/subagents/` | `subagents` | Lead-agent orchestration for branch-isolated multi-agent collaboration |
 
@@ -41,15 +40,11 @@ hax-skills/
     game-asset-gen/
     game-remake-research/
     bdd-skill/
-    godot/
     ralph-loop/
     subagents/
   scripts/
     link-skills.sh
-    package-godot-skill.sh
     validate_skill_layout.py
-  tests/
-    godot/
   .github/
     workflows/
       validate-skills.yml
@@ -84,7 +79,6 @@ CODEX_HOME=/path/to/.codex ./scripts/link-skills.sh
 
 - Edit the installable payloads directly under `skills/`.
 - Keep tests and packaging helpers outside the Skill roots.
-- Use `scripts/package-godot-skill.sh` when you want a release zip for the `godot` Skill.
 - Run `python3 ./scripts/validate_skill_layout.py --strict-warnings` before pushing structural Skill changes.
 - The Game Remake Research smoke workflow lives at `.github/workflows/game-remake-research-ci.yml`.
 - The repo-wide layout validator lives at `.github/workflows/validate-skills.yml`.
