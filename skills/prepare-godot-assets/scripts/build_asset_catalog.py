@@ -7,8 +7,8 @@ import argparse
 import hashlib
 import json
 import re
-from collections import Counter
-from pathlib import Path
+from collections import Counter, defaultdict
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from _asset_utils import category_hint, inspect_file, path_tokens
@@ -297,9 +297,118 @@ def markdown_cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def human_category(category: str) -> str:
+    special = {"2d": "2D", "3d": "3D", "ui": "UI", "vfx": "VFX", "sfx": "SFX"}
+    return " / ".join(
+        special.get(part, part.replace("_", " ").replace("-", " ").title())
+        for part in category.split("/")
+    )
+
+
+def common_library_directory(records: list[dict[str, Any]]) -> str:
+    directory_parts = [
+        PurePosixPath(record["library_path"]).parent.parts for record in records
+    ]
+    common_parts = []
+    for parts_at_depth in zip(*directory_parts):
+        if len(set(parts_at_depth)) != 1:
+            break
+        common_parts.append(parts_at_depth[0])
+    return PurePosixPath(*common_parts).as_posix() if common_parts else "."
+
+
+def usage_summary(records: list[dict[str, Any]], limit: int = 3) -> str:
+    usage_counts: Counter[str] = Counter()
+    for record in records:
+        usage_counts.update(record["usage"].get("recommended_for", []))
+    if usage_counts:
+        ranked = sorted(usage_counts.items(), key=lambda item: (-item[1], item[0]))
+        return "; ".join(usage for usage, _ in ranked[:limit])
+
+    descriptions = sorted(
+        {record["description"].strip() for record in records if record["description"].strip()}
+    )
+    if descriptions:
+        return "; ".join(descriptions[:limit])
+    return "Inspect per-asset metadata before use"
+
+
+def write_agent_index(
+    library_root: Path,
+    records: list[dict[str, Any]],
+    summary: dict[str, Any],
+) -> Path:
+    by_category: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        by_category[record["category"]].append(record)
+
+    package_use = usage_summary(records, limit=5) if records else "No assets cataloged"
+    lines = [
+        "# Asset Library Agent Index",
+        "",
+        "This directory is a standalone, portable asset library prepared for Godot.",
+        "Use this file as the package-level entry point; use the catalog for exact asset selection.",
+        "",
+        "## Package Summary",
+        "",
+        f"- Cataloged assets: {summary['asset_count']}",
+        f"- Ready for agent use: {summary['ready_for_agent_count']}",
+        f"- Main uses: {package_use}",
+        "- Asset files: `assets/`",
+        "- Complete searchable catalog: `catalog/asset_catalog.jsonl`",
+        "- Human-readable catalog: `catalog/ASSET_CATALOG.md`",
+        "- Catalog summary: `catalog/asset_catalog.summary.json`",
+        "- License and attribution texts: `licenses/` when present",
+        "",
+        "## Directory Map",
+        "",
+        "| Asset type | Look in | Typical use | Ready / Total |",
+        "| --- | --- | --- | ---: |",
+    ]
+    if by_category:
+        for category, category_records in sorted(by_category.items()):
+            ready_count = sum(
+                bool(record["ready_for_agent"]) for record in category_records
+            )
+            lines.append(
+                f"| {markdown_cell(human_category(category))} | "
+                f"`{markdown_cell(common_library_directory(category_records))}` | "
+                f"{markdown_cell(usage_summary(category_records))} | "
+                f"{ready_count} / {len(category_records)} |"
+            )
+    else:
+        lines.append("| No assets cataloged | `assets/` | Add indexed assets first | 0 / 0 |")
+
+    lines.extend(
+        [
+            "",
+            "## How To Use This Package",
+            "",
+            "1. Choose a type from the directory map, then search `catalog/asset_catalog.jsonl` by `category`, `tags`, `description`, or `usage.recommended_for`.",
+            "2. Prefer records with `ready_for_agent: true`; review technical, rights, metadata, and Godot compatibility status before using any other record.",
+            "3. Resolve the selected record's `library_path` relative to this directory. Read its adjacent `<filename>.asset.json` sidecar for provenance and detailed intent.",
+            "4. Preserve assets linked through `relationships`, including animation frames, texture maps, model dependencies, UI states, and audio loop groups.",
+            "5. When integrating into a Godot project, copy the selected asset or complete dependency bundle into the project's owned asset tree and apply the sidecar's `import` suggestions deliberately.",
+            "6. Preserve license and attribution requirements. Do not treat `unknown` rights as production approval.",
+            "",
+            "## Quick Queries",
+            "",
+            "```bash",
+            "jq -c 'select(.ready_for_agent and .category == \"audio/sfx\")' catalog/asset_catalog.jsonl",
+            "jq -r 'select(.tags | index(\"forest\")) | [.asset_id, .description, .library_path] | @tsv' catalog/asset_catalog.jsonl",
+            "jq -r 'select(.usage.recommended_for[]? | contains(\"run animation\")) | [.asset_id, .library_path] | @tsv' catalog/asset_catalog.jsonl",
+            "```",
+            "",
+        ]
+    )
+    path = library_root / "AGENTS.md"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
 def write_outputs(
     output_dir: Path, records: list[dict[str, Any]], markdown_limit: int
-) -> None:
+) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     with (output_dir / "asset_catalog.jsonl").open(
         "w", encoding="utf-8", newline="\n"
@@ -378,6 +487,7 @@ def write_outputs(
         )
     lines.append("")
     (output_dir / "ASSET_CATALOG.md").write_text("\n".join(lines), encoding="utf-8")
+    return summary
 
 
 def main() -> int:
@@ -423,11 +533,13 @@ def main() -> int:
     duplicates = sorted(asset_id for asset_id, count in ids.items() if count > 1)
     if duplicates:
         raise SystemExit("Duplicate asset_id values: " + ", ".join(duplicates))
-    write_outputs(output_dir, records, args.markdown_limit)
+    summary = write_outputs(output_dir, records, args.markdown_limit)
+    agent_index = write_agent_index(library_root, records, summary)
     print(
         json.dumps(
             {
                 "catalog": str(output_dir / "asset_catalog.jsonl"),
+                "agent_index": str(agent_index),
                 "assets": len(records),
                 "ready_for_agent": sum(
                     bool(record["ready_for_agent"]) for record in records

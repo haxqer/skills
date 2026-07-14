@@ -1,4 +1,4 @@
 interface:
   display_name: "Prepare Godot Assets"
   short_description: "Build a clear, indexed, Godot-ready asset library"
-  default_prompt: "Use $prepare-godot-assets to turn this unstructured asset dump into a standalone, portable library with purpose-revealing names and searchable human and machine indexes; do not create a Godot project."
+  default_prompt: "Use $prepare-godot-assets to turn this unstructured asset dump into a standalone, portable library with purpose-revealing names, a root AGENTS.md guide, and searchable catalogs; do not create a Godot project."

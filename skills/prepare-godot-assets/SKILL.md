@@ -1,6 +1,6 @@
 ---
 name: prepare-godot-assets
-description: "Audit, deduplicate, classify, normalize, convert, validate, and index game assets into a standalone, portable library suitable for Godot 4.x. Use when Codex needs to turn a messy downloaded asset dump into a clean asset library with purpose-revealing paths and filenames, preserve provenance and rights, identify corrupt or unsafe files, convert mixed image/audio/3D formats, create human-readable and machine-readable indexes for asset discovery, or optionally check compatibility with an existing Godot project. The deliverable is an asset library, not a Godot project."
+description: "Audit, deduplicate, classify, normalize, convert, validate, and index game assets into a standalone, portable library suitable for Godot 4.x. Use when Codex needs to turn a messy downloaded asset dump into a clean asset library with purpose-revealing paths and filenames, preserve provenance and rights, identify corrupt or unsafe files, convert mixed image/audio/3D formats, create human-readable and machine-readable indexes plus a package-level AGENTS.md guide for AI discovery, or optionally check compatibility with an existing Godot project. The deliverable is an asset library, not a Godot project."
 ---
 
 # Prepare Godot Assets
@@ -15,6 +15,7 @@ selectable from the catalog without opening every file.
 
   ```text
   asset_library/
+    AGENTS.md     # AI entry point: type-to-directory map and package usage
     assets/       # normalized, usable assets and adjacent metadata sidecars
     catalog/      # JSONL, JSON summary, and Markdown indexes
     licenses/     # verified license and attribution texts when available
@@ -139,6 +140,8 @@ python3 "$SKILL_DIR/scripts/build_asset_catalog.py" LIBRARY/assets \
 
 Use:
 
+- `AGENTS.md` as the Agent's package-level entry point, directory map, and usage
+  guide;
 - `catalog/asset_catalog.jsonl` as the complete Agent retrieval source;
 - `catalog/asset_catalog.summary.json` for counts and automated checks;
 - `catalog/ASSET_CATALOG.md` for human scanning by purpose, category, status,
@@ -179,7 +182,7 @@ Report the final library path and:
 - exact duplicates and the retained canonical asset;
 - conversions with source and derivative hashes;
 - rejected or quarantined files with reasons;
-- catalog paths and `ready_for_agent` count;
+- Agent index and catalog paths plus the `ready_for_agent` count;
 - unresolved visual, dependency, license, attribution, or compatibility risks.
 
 ## Scripts
@@ -189,7 +192,8 @@ Report the final library path and:
 - `scripts/materialize_asset_plan.py`: validate and safely apply a hash-pinned
   copy/image/audio plan into the standalone library.
 - `scripts/build_asset_catalog.py`: merge assets and sidecars into deterministic
-  JSONL, JSON summary, and Markdown indexes using portable library paths.
+  JSONL, JSON summary, and Markdown indexes, including the root `AGENTS.md`
+  package guide, using portable library paths.
 - `scripts/verify_godot_import.py`: optionally test a snapshot inside an existing
   Godot project; never use it to create the library itself.
 
@@ -197,13 +201,15 @@ Report the final library path and:
 
 - Confirm the original dump was not modified and the final output contains no
   `project.godot`, `.godot/`, imported cache, temporary reports, or quarantine.
-- Confirm the library has only `assets/`, `catalog/`, and applicable `licenses/`
-  deliverables at its top level.
+- Confirm the library has `AGENTS.md`, `assets/`, `catalog/`, and applicable
+  `licenses/` deliverables at its top level.
 - Confirm normalized paths are collision-free, filenames reveal intended use,
   and cohesive dependency references work.
 - Confirm every accepted asset has a stable ID, non-empty description, semantic
   tags, recommended uses, rights status, source provenance, and `library_path`.
 - Confirm `ASSET_CATALOG.md` is useful for scanning and every JSONL record can be
   located relative to the library root.
+- Confirm root `AGENTS.md` maps every catalog category to its actual directory,
+  summarizes typical uses, and explains how to select and integrate the pack.
 - Confirm compatibility is marked `not_tested` unless evidence came from the
   exact user-supplied Godot target; never generate a project just to change it.

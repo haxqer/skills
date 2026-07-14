@@ -10,6 +10,7 @@ Use this shallow, task-oriented baseline:
 
 ```text
 asset_library/
+  AGENTS.md
   assets/
     2d/
       characters/<character_id>/{animations,portraits,parts}/
@@ -155,6 +156,15 @@ The path remains portable because it never assumes `res://` or a Godot project.
 Godot compatibility uses `verified` for successful external imports,
 `not_applicable` for Godot-native resources that do not use the external importer,
 `not_tested` without target evidence, and `failed` for actual import failures.
+
+## Agent Package Index
+
+Generate `AGENTS.md` at the library root as the package-level AI entry point.
+Build it from the final catalog so it stays synchronized with actual assets. It
+must summarize the package's main uses, map every present category to the common
+directory where that type is stored, show ready and total counts, link the catalog
+files, and explain selection, dependency, import, and rights handling. Keep exact
+per-asset metadata in JSONL and sidecars rather than duplicating it in this guide.
 
 Useful query shapes:
 

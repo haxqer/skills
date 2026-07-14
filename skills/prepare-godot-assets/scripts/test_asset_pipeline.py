@@ -8,7 +8,11 @@ import unittest
 from pathlib import Path
 
 from _asset_utils import sha256_file
-from build_asset_catalog import build_record, compatibility_result
+from build_asset_catalog import (
+    build_record,
+    compatibility_result,
+    write_agent_index,
+)
 from materialize_asset_plan import validate_row, write_sidecar
 
 
@@ -179,6 +183,45 @@ class CatalogCompatibilityTests(unittest.TestCase):
                 record["godot_compatibility"]["status"], "not_applicable"
             )
             self.assertTrue(record["ready_for_agent"])
+
+
+class AgentIndexTests(unittest.TestCase):
+    def test_agent_index_maps_categories_to_directories_and_usage(self) -> None:
+        records = [
+            {
+                "category": "audio/sfx",
+                "description": "Metal sword impact.",
+                "library_path": "assets/audio/sfx/combat/sword_hit_metal_01.wav",
+                "ready_for_agent": True,
+                "usage": {"recommended_for": ["melee combat impact sound"]},
+            },
+            {
+                "category": "audio/sfx",
+                "description": "Wooden shield impact.",
+                "library_path": "assets/audio/sfx/combat/shield_hit_wood_01.wav",
+                "ready_for_agent": False,
+                "usage": {"recommended_for": ["melee combat impact sound"]},
+            },
+            {
+                "category": "2d/ui",
+                "description": "Inventory slot hover state.",
+                "library_path": "assets/2d/ui/controls/inventory_slot_hover.png",
+                "ready_for_agent": True,
+                "usage": {"recommended_for": ["inventory slot hover state"]},
+            },
+        ]
+        summary = {"asset_count": 3, "ready_for_agent_count": 2}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            index_path = write_agent_index(Path(temporary), records, summary)
+            content = index_path.read_text(encoding="utf-8")
+
+        self.assertEqual(index_path.name, "AGENTS.md")
+        self.assertIn("| Audio / SFX | `assets/audio/sfx/combat` |", content)
+        self.assertIn("melee combat impact sound", content)
+        self.assertIn("| 1 / 2 |", content)
+        self.assertIn("catalog/asset_catalog.jsonl", content)
+        self.assertIn("How To Use This Package", content)
 
 
 if __name__ == "__main__":
