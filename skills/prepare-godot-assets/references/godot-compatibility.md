@@ -1,8 +1,10 @@
 # Godot 4 Asset Compatibility
 
-Use this reference to choose canonical formats and interpret import results. The
-target Godot executable remains authoritative because importer availability and
-behavior vary by Godot version, platform, build, and installed extensions.
+Use this reference to choose portable delivery formats and interpret optional
+import results from an existing user-supplied project. Do not create a Godot
+project as the asset-library deliverable. A target executable is authoritative
+only for that project's compatibility because importer behavior varies by Godot
+version, platform, build, and installed extensions.
 
 ## Canonical Matrix
 
@@ -71,6 +73,9 @@ behavior vary by Godot version, platform, build, and installed extensions.
 
 ## Import State
 
+- Run import verification only when the user supplied an existing target project
+  and requested compatibility testing. Keep the standalone library free of Godot
+  project files, `.godot/`, `.import`, `.uid`, and temporary test scenes.
 - Let the target Godot version create adjacent `.import` metadata and the
   `.godot/imported/` cache. Never copy these from the downloaded dump or hand-edit
   them as a substitute for a real import.

@@ -19,6 +19,24 @@ from _asset_utils import FORMAT_BY_EXTENSION, inspect_file, sha256_file
 
 DESTINATION_RE = re.compile(r"^[a-z0-9][a-z0-9_./-]*$")
 ALLOWED_ACTIONS = {"copy", "image-png", "audio-wav", "audio-ogg"}
+ALLOWED_RIGHTS_STATUSES = {
+    "owned",
+    "cleared",
+    "allowed",
+    "public-domain",
+    "restricted",
+    "unknown",
+}
+ALLOWED_TECHNICAL_STATUSES = {
+    "ready",
+    "candidate",
+    "review",
+    "conversion-required",
+    "quarantined",
+    "unsupported",
+}
+ASSET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+CATEGORY_RE = re.compile(r"^[a-z0-9][a-z0-9_/-]*$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,6 +52,11 @@ def parse_args() -> argparse.Namespace:
         "--apply",
         action="store_true",
         help="Materialize the plan; default is validation only",
+    )
+    parser.add_argument(
+        "--require-metadata",
+        action="store_true",
+        help="Require retrieval metadata needed by the standalone asset catalog",
     )
     parser.add_argument("--report", type=Path, help="Optional JSON execution report")
     return parser.parse_args()
@@ -92,6 +115,82 @@ def roots_overlap(first: Path, second: Path) -> bool:
         return False
 
 
+def nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def string_list(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(nonempty_string(item) for item in value)
+    )
+
+
+def validate_retrieval_metadata(
+    metadata: dict[str, Any],
+    line: int,
+    source_path: str,
+    source_sha256: str,
+) -> None:
+    for field in ("asset_id", "name", "description", "category"):
+        if not nonempty_string(metadata.get(field)):
+            raise ValueError(f"metadata.{field} must be non-empty on line {line}")
+    if not string_list(metadata.get("tags")):
+        raise ValueError(
+            f"metadata.tags must be a non-empty array of strings on line {line}"
+        )
+    if not ASSET_ID_RE.fullmatch(metadata["asset_id"]):
+        raise ValueError(f"metadata.asset_id has unsupported characters on line {line}")
+    if not CATEGORY_RE.fullmatch(metadata["category"]):
+        raise ValueError(
+            f"metadata.category must be a normalized lowercase path on line {line}"
+        )
+    usage = metadata.get("usage")
+    if not isinstance(usage, dict) or not string_list(usage.get("recommended_for")):
+        raise ValueError(
+            "metadata.usage.recommended_for must be a non-empty array of strings "
+            f"on line {line}"
+        )
+    avoid = usage.get("avoid", [])
+    if not isinstance(avoid, list) or any(not nonempty_string(item) for item in avoid):
+        raise ValueError(
+            f"metadata.usage.avoid must be an array of non-empty strings on line {line}"
+        )
+    license_data = metadata.get("license")
+    status = license_data.get("status") if isinstance(license_data, dict) else None
+    if not isinstance(status, str) or status not in ALLOWED_RIGHTS_STATUSES:
+        allowed = ", ".join(sorted(ALLOWED_RIGHTS_STATUSES))
+        raise ValueError(
+            f"metadata.license.status must be one of {allowed} on line {line}"
+        )
+    source = metadata.get("source")
+    if not isinstance(source, dict) or not nonempty_string(source.get("original_path")):
+        raise ValueError(
+            f"metadata.source.original_path must be non-empty on line {line}"
+        )
+    if source["original_path"] != source_path:
+        raise ValueError(
+            "metadata.source.original_path must match the plan source "
+            f"on line {line}"
+        )
+    declared_source_hash = source.get("sha256")
+    if declared_source_hash is not None and declared_source_hash != source_sha256:
+        raise ValueError(
+            "metadata.source.sha256 must match the verified source SHA-256 "
+            f"on line {line}"
+        )
+    technical_status = metadata.get("technical_status")
+    if (
+        not isinstance(technical_status, str)
+        or technical_status not in ALLOWED_TECHNICAL_STATUSES
+    ):
+        allowed = ", ".join(sorted(ALLOWED_TECHNICAL_STATUSES))
+        raise ValueError(
+            f"metadata.technical_status must be one of {allowed} on line {line}"
+        )
+
+
 @functools.lru_cache(maxsize=None)
 def resolve_tool(action: str) -> str | None:
     if action == "image-png":
@@ -138,6 +237,8 @@ def validate_row(
     source_root: Path,
     destination_root: Path,
     destinations: set[Path],
+    asset_ids: set[str],
+    require_metadata: bool,
 ) -> dict[str, Any]:
     line = row["_line"]
     source_rel = relative_path(row.get("source"), f"source on line {line}")
@@ -208,6 +309,17 @@ def validate_row(
     metadata = row.get("metadata", {})
     if not isinstance(metadata, dict):
         raise ValueError(f"metadata must be an object on line {line}")
+    if require_metadata:
+        validate_retrieval_metadata(
+            metadata,
+            line,
+            source_rel.as_posix(),
+            actual_hash,
+        )
+        asset_id = metadata["asset_id"]
+        if asset_id in asset_ids:
+            raise ValueError(f"Duplicate metadata.asset_id on line {line}: {asset_id}")
+        asset_ids.add(asset_id)
 
     existing = None
     if destination.exists():
@@ -293,7 +405,13 @@ def write_sidecar(operation: dict[str, Any]) -> None:
         return
     sidecar = Path(str(operation["destination"]) + ".asset.json")
     payload = dict(operation["metadata"])
-    payload.setdefault("source_sha256", operation["source_sha256"])
+    source = payload.get("source")
+    if isinstance(source, dict):
+        source = dict(source)
+        source["sha256"] = operation["source_sha256"]
+        payload["source"] = source
+    else:
+        payload["source_sha256"] = operation["source_sha256"]
     encoded = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
     sidecar.parent.mkdir(parents=True, exist_ok=True)
     descriptor, name = tempfile.mkstemp(prefix=f".{sidecar.name}.", dir=sidecar.parent)
@@ -367,8 +485,16 @@ def main() -> int:
     try:
         rows = load_plan(args.plan)
         destinations: set[Path] = set()
+        asset_ids: set[str] = set()
         operations = [
-            validate_row(row, source_root, destination_root, destinations)
+            validate_row(
+                row,
+                source_root,
+                destination_root,
+                destinations,
+                asset_ids,
+                args.require_metadata,
+            )
             for row in rows
         ]
     except ValueError as error:

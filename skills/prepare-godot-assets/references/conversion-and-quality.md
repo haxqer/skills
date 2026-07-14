@@ -87,8 +87,12 @@ An asset can advance from staging only when all applicable gates pass:
    executable risk.
 3. Structure: normalized collision-free path and stable ID assigned.
 4. Quality: content-specific checks pass at intended game settings.
-5. Compatibility: target Godot headless import succeeds with no relevant error.
-6. Runtime: representative scene behavior is correct.
+5. Library compatibility: use a documented Godot-supported delivery format and
+   resolve all file dependencies. Record target-project import results separately
+   when the user requested that optional integration check.
+6. Runtime: verify representative scene behavior only when a target project and
+   runtime validation are in scope.
 7. Rights: license/provenance status is explicit, even when still unknown.
-8. Retrieval: description, category, tags, relationships, and `res://` path are
-   sufficient for an Agent to select the asset without guessing.
+8. Retrieval: purpose-revealing filename, description, category, tags,
+   recommended uses, relationships, and portable `library_path` are sufficient
+   for an Agent to select and locate the asset without guessing.
