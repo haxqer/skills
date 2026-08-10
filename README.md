@@ -25,6 +25,7 @@ generic tooling.
 | `skills/phaser/` | `phaser` | Phaser 3 browser game development, debugging, and runtime validation |
 | `skills/game-asset-gen/` | `game-asset-gen` | Pixel-art sprite, icon, and frame-sequence generation for retro 2D games |
 | `skills/game-remake-research/` | `game-remake-research` | Research-pack workflow for remaking an existing game |
+| `skills/permission-system/` | `permission-system` | RBAC authorization design and implementation: role-permission matrix, menu and button permissions, row and column data permissions, SaaS plan ceilings |
 | `skills/bdd-skill/` | `bdd-skill` | BDD and Gherkin drafting, refinement, and review |
 | `skills/ralph-loop/` | `ralph-loop` | Closed-loop autonomous engineering protocol until done |
 | `skills/subagents/` | `subagents` | Lead-agent orchestration for branch-isolated multi-agent collaboration |
@@ -39,6 +40,7 @@ hax-skills/
     phaser/
     game-asset-gen/
     game-remake-research/
+    permission-system/
     bdd-skill/
     ralph-loop/
     subagents/

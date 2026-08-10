@@ -1,0 +1,132 @@
+{
+  "meta": {
+    "system": "Online exam platform (see references/worked-example.md)",
+    "note": "Machine-readable form of the permission matrix. Run scripts/validate_permission_model.py against it before implementing. This example is expected to validate with zero errors and zero warnings.",
+    "grant_wildcards": "'*' matches every permission. 'prefix:*' matches the code 'prefix' and everything beneath it. Wildcards are valid in grants and plans only, never in a runtime check.",
+    "data_scope_values": ["ALL", "CUSTOM", "DEPT_AND_BELOW", "DEPT", "SELF"],
+    "mutex_format": "List of role-code groups whose members may never be held by the same user."
+  },
+
+  "permissions": [
+    { "code": "question",                 "name": "题库管理",   "type": "dir",    "parent": null,              "sort": 10 },
+    { "code": "question:bank",            "name": "题库",       "type": "menu",   "parent": "question",        "sort": 10, "route_path": "/question/bank", "component": "question/bank/index" },
+    { "code": "question:bank:list",       "name": "查询",       "type": "button", "parent": "question:bank",   "sort": 10, "action": "read" },
+    { "code": "question:bank:create",     "name": "新增",       "type": "button", "parent": "question:bank",   "sort": 20, "action": "write" },
+    { "code": "question:bank:edit",       "name": "编辑",       "type": "button", "parent": "question:bank",   "sort": 30, "action": "write" },
+    { "code": "question:bank:delete",     "name": "删除",       "type": "button", "parent": "question:bank",   "sort": 40, "action": "write" },
+    { "code": "question:bank:export",     "name": "导出",       "type": "button", "parent": "question:bank",   "sort": 50, "action": "read" },
+    { "code": "question:bank:share",      "name": "共享",       "type": "button", "parent": "question:bank",   "sort": 60, "action": "write" },
+
+    { "code": "candidate",                "name": "考生管理",   "type": "dir",    "parent": null,              "sort": 20 },
+    { "code": "candidate:student",        "name": "考生",       "type": "menu",   "parent": "candidate",       "sort": 10, "route_path": "/candidate/student", "component": "candidate/student/index" },
+    { "code": "candidate:student:list",   "name": "查询",       "type": "button", "parent": "candidate:student", "sort": 10, "action": "read" },
+    { "code": "candidate:student:edit",   "name": "编辑",       "type": "button", "parent": "candidate:student", "sort": 20, "action": "write" },
+    { "code": "candidate:student:export", "name": "导出",       "type": "button", "parent": "candidate:student", "sort": 30, "action": "read" },
+
+    { "code": "exam",                     "name": "考试管理",   "type": "dir",    "parent": null,              "sort": 30 },
+    { "code": "exam:session",             "name": "考场",       "type": "menu",   "parent": "exam",            "sort": 10, "route_path": "/exam/session", "component": "exam/session/index" },
+    { "code": "exam:session:list",        "name": "查询",       "type": "button", "parent": "exam:session",    "sort": 10, "action": "read" },
+    { "code": "exam:session:operate",     "name": "开考/收卷",  "type": "button", "parent": "exam:session",    "sort": 20, "action": "write" },
+    { "code": "exam:score",               "name": "成绩",       "type": "menu",   "parent": "exam",            "sort": 20, "route_path": "/exam/score", "component": "exam/score/index" },
+    { "code": "exam:score:list",          "name": "查询",       "type": "button", "parent": "exam:score",      "sort": 10, "action": "read" },
+    { "code": "exam:score:audit",         "name": "审核",       "type": "button", "parent": "exam:score",      "sort": 20, "action": "write" },
+
+    { "code": "system",                   "name": "系统管理",   "type": "dir",    "parent": null,              "sort": 90 },
+    { "code": "system:user",              "name": "用户管理",   "type": "menu",   "parent": "system",          "sort": 10, "route_path": "/system/user", "component": "system/user/index" },
+    { "code": "system:user:list",         "name": "查询",       "type": "button", "parent": "system:user",     "sort": 10, "action": "read" },
+    { "code": "system:role",              "name": "角色管理",   "type": "menu",   "parent": "system",          "sort": 20, "route_path": "/system/role", "component": "system/role/index" },
+    { "code": "system:role:manage",       "name": "管理",       "type": "button", "parent": "system:role",     "sort": 10, "action": "write", "note": "merged create + edit + delete" }
+  ],
+
+  "roles": [
+    {
+      "code": "super_admin",
+      "name": "超级管理员",
+      "builtin": true,
+      "hidden": true,
+      "permissions": ["*"],
+      "data_scope": "ALL"
+    },
+    {
+      "code": "school_admin",
+      "name": "学校管理员",
+      "builtin": true,
+      "permissions": ["question:*", "candidate:*", "exam:*", "system:*"],
+      "data_scope": "ALL"
+    },
+    {
+      "code": "group_leader",
+      "name": "教研组长",
+      "builtin": true,
+      "permissions": [
+        "question:bank", "question:bank:list", "question:bank:create",
+        "question:bank:edit", "question:bank:delete", "question:bank:share",
+        "candidate:student", "candidate:student:list", "candidate:student:edit",
+        "exam:session", "exam:session:list",
+        "exam:score", "exam:score:list"
+      ],
+      "data_scope": "DEPT_AND_BELOW",
+      "write_scope": "SELF"
+    },
+    {
+      "code": "teacher",
+      "name": "教师",
+      "builtin": true,
+      "permissions": [
+        "question:bank", "question:bank:list", "question:bank:create",
+        "question:bank:edit", "question:bank:share",
+        "candidate:student", "candidate:student:list",
+        "exam:session", "exam:session:list"
+      ],
+      "data_scope": "SELF"
+    },
+    {
+      "code": "exam_proctor",
+      "name": "监考员",
+      "builtin": false,
+      "permissions": [
+        "candidate:student", "candidate:student:list",
+        "exam:session", "exam:session:list", "exam:session:operate"
+      ],
+      "data_scope": "SELF"
+    },
+    {
+      "code": "exam_auditor",
+      "name": "成绩审核员",
+      "builtin": false,
+      "permissions": ["exam:score", "exam:score:list", "exam:score:audit"],
+      "data_scope": "CUSTOM",
+      "depts": ["teaching-group-a", "teaching-group-b"]
+    }
+  ],
+
+  "plans": [
+    {
+      "code": "basic",
+      "name": "基础版",
+      "permissions": [
+        "question", "question:bank", "question:bank:list", "question:bank:create",
+        "question:bank:edit", "question:bank:delete", "question:bank:share",
+        "candidate", "candidate:student", "candidate:student:list", "candidate:student:edit",
+        "exam", "exam:session", "exam:session:list", "exam:session:operate",
+        "exam:score", "exam:score:list", "exam:score:audit",
+        "system", "system:user", "system:user:list", "system:role", "system:role:manage"
+      ]
+    },
+    {
+      "code": "pro",
+      "name": "专业版",
+      "permissions": ["*"]
+    }
+  ],
+
+  "mutex": [
+    ["exam_proctor", "exam_auditor"]
+  ],
+
+  "field_rules": [
+    { "role": "school_admin", "resource": "candidate:student", "field": "id_card_no", "access": "read" },
+    { "role": "group_leader", "resource": "candidate:student", "field": "phone",      "access": "masked" },
+    { "role": "teacher",      "resource": "candidate:student", "field": "phone",      "access": "masked" }
+  ]
+}

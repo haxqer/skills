@@ -1,0 +1,4 @@
+interface:
+  display_name: "Permission System"
+  short_description: "Design and implement RBAC function and data permissions"
+  default_prompt: "Use $permission-system to design and implement a complete authorization system: pick the model (ACL, RBAC0-3, user groups, ABAC conditions), enumerate roles and permissions into a role-permission matrix, define permission codes, build the schema for users, roles, permissions, menus, departments and positions, enforce menu and button level function permissions server-side, apply row-level data scopes and column-level field whitelists in the data-access layer, model SaaS plan ceilings and quotas, handle permission caching and invalidation, and test for horizontal and vertical over-privilege."

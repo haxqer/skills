@@ -1,0 +1,40 @@
+module,page,operation,permission_code,type,plan,school_admin,group_leader,teacher,exam_proctor,read_scope_rule,write_scope_rule,notes
+Question,Question bank,Page access,question:bank,menu,basic,Y,Y,Y,N,,,Grants the menu entry; buttons hang off it
+Question,Question bank,View list,question:bank:list,button,basic,Y,Y,Y,N,admin: ALL; leader: DEPT_AND_BELOW; teacher: SELF + shared,,
+Question,Question bank,Create,question:bank:create,button,basic,Y,Y,Y,N,,creator becomes owner,
+Question,Question bank,Edit,question:bank:edit,button,basic,Y,Y,Y,N,,leader and teacher: SELF only,Read scope is wider than write scope on purpose
+Question,Question bank,Delete,question:bank:delete,button,basic,Y,Y,N,N,,leader: DEPT_AND_BELOW,
+Question,Question bank,Export,question:bank:export,button,pro,Y,N,N,N,,,Pro plan only - ceiling not grant
+Question,Question bank,Share,question:bank:share,button,basic,Y,Y,Y,N,,owner only,Object-level ACL not role grant
+Candidate,Candidates,Page access,candidate:student,menu,basic,Y,Y,Y,Y,,,
+Candidate,Candidates,View list,candidate:student:list,button,basic,Y,Y,Y,Y,admin: ALL; leader: DEPT_AND_BELOW; teacher and proctor: SELF,,
+Candidate,Candidates,Edit,candidate:student:edit,button,basic,Y,Y,N,N,,leader: DEPT_AND_BELOW,
+Candidate,Candidates,Export,candidate:student:export,button,pro,Y,N,N,N,,,Pro plan only
+Exam,Exam sessions,Page access,exam:session,menu,basic,Y,Y,Y,Y,,,
+Exam,Exam sessions,View list,exam:session:list,button,basic,Y,Y,Y,Y,proctor: assigned sessions only,,
+Exam,Exam sessions,Start / stop,exam:session:operate,button,basic,Y,N,N,Y,,proctor: assigned sessions only,
+System,Users,Page access,system:user,menu,basic,Y,N,N,N,,,
+System,Users,View list,system:user:list,button,basic,Y,N,N,N,ALL within tenant,,
+System,Roles,Page access,system:role,menu,basic,Y,N,N,N,,,
+System,Roles,Manage roles,system:role:manage,button,basic,Y,N,N,N,,,Includes create / edit / delete - merged on purpose
+,,,,,,,,,,,,
+# FIELD RULES,,,,,,,,,,,,
+Candidate,Candidates,Field: id_card_no,,field,basic,Y,N,N,N,,,Visible to school_admin only
+Candidate,Candidates,Field: phone,,field,basic,Y,Y,masked,masked,,,Mask server-side never client-side
+,,,,,,,,,,,,
+# ROLE METADATA,,,,,,,,,,,,
+# role,kind,read_scope,write_scope,mutually_exclusive_with,,,,,,,,
+# school_admin,builtin,ALL,ALL,,,,,,,,,
+# group_leader,builtin,DEPT_AND_BELOW,DEPT_AND_BELOW (SELF for questions),,,,,,,,,
+# teacher,builtin,SELF,SELF,,,,,,,,,
+# exam_proctor,custom,SELF,SELF,exam_auditor,,,,,,,,
+,,,,,,,,,,,,
+# HOW TO FILL THIS IN,,,,,,,,,,,,
+# 1. One row per operation. Y or N in every role cell - never leave a role cell blank.,,,,,,,,,,,,
+# 2. Assign permission_code here not later in code. Format: module:resource:action.,,,,,,,,,,,,
+# 3. Give every page a menu row; buttons without their parent menu are unreachable.,,,,,,,,,,,,
+# 4. State read and write scope separately wherever they differ.,,,,,,,,,,,,
+# 5. A role with a write Y and a read N is a defect - fix it here not in code.,,,,,,,,,,,,
+# 6. plan column = the LOWEST plan that includes the code. Plans cap; they do not grant.,,,,,,,,,,,,
+# 7. Merge codes that no role distinguishes. Fewer well-chosen codes beat many unused ones.,,,,,,,,,,,,
+# 8. Convert to permission-model.json and run scripts/validate_permission_model.py.,,,,,,,,,,,,
