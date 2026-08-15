@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spine Animation"
+  short_description: "Rig and animate 2D characters as Spine skeletons, then export .json/.atlas/.png + an HTML preview"
+  default_prompt: "Use $spine-animation to rig and animate a 2D character with Spine — auto-position separated body-part PNGs (or deconstruct a full image) onto a bone hierarchy, build a Spine 4.2 skeleton, author idle/walk/run/wave/jump/attack or custom animations, pack a texture atlas, and render a self-contained HTML5 Spine Web Player preview."

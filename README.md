@@ -24,6 +24,7 @@ generic tooling.
 | `skills/frontend-dev/` | `frontend-dev` | React web frontend development with shadcn/ui (Vite/Next.js), theming, forms, and accessibility |
 | `skills/phaser/` | `phaser` | Phaser 3 browser game development, debugging, and runtime validation |
 | `skills/game-asset-gen/` | `game-asset-gen` | Pixel-art sprite, icon, and frame-sequence generation for retro 2D games |
+| `skills/spine-animation/` | `spine-animation` | Spine 2D rigging and skeletal animation from existing art, with atlas export and HTML preview |
 | `skills/combat-sim-tuning/` | `combat-sim-tuning` | Monte Carlo combat simulation for balance validation: seeded batches, win-rate and battle-length distributions, damage share, sensitivity, constrained tuning search, and regression gates |
 | `skills/game-remake-research/` | `game-remake-research` | Research-pack workflow for remaking an existing game |
 | `skills/permission-system/` | `permission-system` | RBAC authorization design and implementation: role-permission matrix, menu and button permissions, row and column data permissions, SaaS plan ceilings |
@@ -40,6 +41,7 @@ hax-skills/
     frontend-dev/
     phaser/
     game-asset-gen/
+    spine-animation/
     combat-sim-tuning/
     game-remake-research/
     permission-system/
