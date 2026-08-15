@@ -1,0 +1,4 @@
+interface:
+  display_name: "Combat Sim Tuning"
+  short_description: "Simulate thousands of battles to validate and rebalance game numbers"
+  default_prompt: "Use $combat-sim-tuning to model this system, run it thousands of times, and report win rates, battle-length distributions, damage shares, and a verified tuning proposal."

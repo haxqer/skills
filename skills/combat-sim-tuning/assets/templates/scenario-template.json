@@ -1,0 +1,153 @@
+{
+  "scenario_id": "example_party_vs_boss",
+  "notes": "Reference scenario. Every field below is documented in references/modeling-and-resolution.md.",
+  "max_rounds": 50,
+  "seconds_per_round": 3.0,
+  "damage_model": "ratio",
+  "damage_model_params": {
+    "defense_constant": 300.0
+  },
+  "damage_variance": 0.10,
+  "teams": {
+    "party": [
+      {
+        "id": "knight",
+        "role": "tank",
+        "hp": 2600,
+        "atk": 270,
+        "def": 320,
+        "speed": 95,
+        "crit_chance": 0.05,
+        "crit_mult": 1.5,
+        "accuracy": 0.95,
+        "dodge": 0.03,
+        "resource": 100,
+        "resource_regen": 25,
+        "skill_policy": "priority",
+        "target_policy": "lowest_hp",
+        "skills": [
+          {
+            "id": "taunt_guard",
+            "type": "buff",
+            "targets": "self",
+            "cooldown": 3,
+            "cost": 40,
+            "priority": 2,
+            "status": {
+              "id": "guard",
+              "duration": 3,
+              "shield": 600,
+              "stat_mults": { "def": 1.3 }
+            }
+          },
+          { "id": "slash", "type": "attack", "power": 1.0, "priority": 1 }
+        ]
+      },
+      {
+        "id": "mage",
+        "role": "dps",
+        "hp": 1200,
+        "atk": 558,
+        "def": 90,
+        "speed": 110,
+        "crit_chance": 0.20,
+        "crit_mult": 1.8,
+        "accuracy": 0.95,
+        "dodge": 0.05,
+        "resource": 120,
+        "resource_regen": 30,
+        "skill_policy": "priority",
+        "skills": [
+          {
+            "id": "firestorm",
+            "type": "attack",
+            "power": 1.15,
+            "targets": "enemy_all",
+            "cooldown": 2,
+            "cost": 60,
+            "priority": 2,
+            "status": { "id": "burn", "duration": 3, "dot": 90, "stack_rule": "stack", "max_stacks": 3 }
+          },
+          { "id": "bolt", "type": "attack", "power": 1.0, "priority": 1 }
+        ]
+      },
+      {
+        "id": "rogue",
+        "role": "dps",
+        "hp": 1400,
+        "atk": 450,
+        "def": 120,
+        "speed": 135,
+        "crit_chance": 0.35,
+        "crit_mult": 2.0,
+        "accuracy": 0.92,
+        "dodge": 0.12,
+        "skill_policy": "priority",
+        "target_policy": "lowest_hp",
+        "skills": [{ "id": "flurry", "type": "attack", "power": 0.55, "hits": 3 }]
+      },
+      {
+        "id": "cleric",
+        "role": "support",
+        "hp": 1500,
+        "atk": 306,
+        "def": 140,
+        "speed": 100,
+        "crit_chance": 0.05,
+        "accuracy": 0.95,
+        "resource": 140,
+        "resource_regen": 35,
+        "skill_policy": "priority",
+        "skills": [
+          {
+            "id": "mend",
+            "type": "heal",
+            "power": 1.6,
+            "targets": "ally_lowest_hp_pct",
+            "cost": 45,
+            "priority": 2
+          },
+          { "id": "smite", "type": "attack", "power": 0.9, "priority": 1 }
+        ]
+      }
+    ],
+    "boss": [
+      {
+        "id": "warden",
+        "role": "boss",
+        "hp": 10000,
+        "atk": 800,
+        "def": 260,
+        "speed": 105,
+        "crit_chance": 0.10,
+        "crit_mult": 1.6,
+        "accuracy": 0.94,
+        "dodge": 0.0,
+        "resource": 100,
+        "resource_regen": 20,
+        "skill_policy": "priority",
+        "target_policy": "lowest_hp_pct",
+        "skills": [
+          {
+            "id": "quake",
+            "type": "attack",
+            "power": 0.75,
+            "targets": "enemy_all",
+            "cooldown": 3,
+            "cost": 60,
+            "priority": 3
+          },
+          {
+            "id": "crush",
+            "type": "attack",
+            "power": 1.35,
+            "cooldown": 2,
+            "priority": 2,
+            "status": { "id": "stagger", "duration": 1, "stun": true }
+          },
+          { "id": "swipe", "type": "attack", "power": 1.0, "priority": 1 }
+        ]
+      }
+    ]
+  }
+}

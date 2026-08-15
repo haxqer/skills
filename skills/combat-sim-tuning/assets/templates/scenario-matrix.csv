@@ -1,0 +1,8 @@
+scenario_id,file,cohort,power_state,build,opponent,policy,focus_team,battles,seed_base,target_half_width,purpose,expected_win_rate,acceptance_file,status,note
+warden_reference,scenarios/warden_reference.json,core,on-tier,balanced,warden,priority,party,10000,0,0.015,Reference band for first clear,0.55,acceptance-thresholds.csv,active,Primary gate
+warden_undergeared,scenarios/warden_reference.json,core,-1 tier,balanced,warden,priority,party,10000,0,0.02,Confirm the fight stays learnable while behind,0.25,acceptance-thresholds.csv,active,Run via --scale on party stats
+warden_overgeared,scenarios/warden_reference.json,core,+1 tier,balanced,warden,priority,party,10000,0,0.02,Confirm the fight does not become a formality,0.85,acceptance-thresholds.csv,active,Guards against trivialisation
+warden_no_healer,scenarios/warden_no_healer.json,core,on-tier,no support,warden,priority,party,10000,0,0.02,Check whether the healer is mandatory,0.30,acceptance-thresholds.csv,active,Detects forced composition
+warden_all_dps,scenarios/warden_all_dps.json,expert,on-tier,greed,warden,max_damage,party,10000,0,0.02,Check whether the intended tank is skippable,0.45,acceptance-thresholds.csv,active,Detects dominated roles
+warden_random_policy,scenarios/warden_reference.json,casual,on-tier,balanced,warden,weighted_random,party,10000,0,0.02,Lower-skill policy floor,0.35,acceptance-thresholds.csv,active,Policy sensitivity
+warden_worst_seed_band,scenarios/warden_reference.json,core,on-tier,balanced,warden,priority,party,20000,500000,0.015,Independent seed block to catch seed overfitting,0.55,acceptance-thresholds.csv,active,Never tune on this block

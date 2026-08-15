@@ -1,0 +1,81 @@
+{
+  "plan_id": "warden_encounter_tuning",
+  "focus_team": "party",
+  "eval_battles": 2000,
+  "verify_battles": 10000,
+  "seed_base": 0,
+  "verify_seed_base": 1000000,
+  "change_penalty": 0.25,
+  "objectives": [
+    {
+      "metric": "win_rate.point",
+      "target": 0.55,
+      "tolerance": 0.03,
+      "scale": 0.03,
+      "weight": 2.0,
+      "note": "first-clear band for the reference cohort"
+    },
+    {
+      "metric": "rounds.mean",
+      "target": 18,
+      "tolerance": 3,
+      "scale": 3,
+      "weight": 1.0,
+      "note": "encounter should read as a fight, not a war of attrition"
+    },
+    {
+      "metric": "rounds.p90",
+      "max": 32,
+      "scale": 4,
+      "weight": 1.0,
+      "note": "tail length drives perceived slog"
+    },
+    {
+      "metric": "timeout_rate",
+      "max": 0.02,
+      "scale": 0.02,
+      "weight": 1.0,
+      "note": "a timeout is an unreadable outcome"
+    },
+    {
+      "metric": "max_damage_share",
+      "max": 0.4,
+      "scale": 0.05,
+      "weight": 1.0,
+      "note": "no single carry may own the encounter"
+    },
+    {
+      "metric": "concentration.effective_contributors",
+      "min": 2.5,
+      "scale": 0.5,
+      "weight": 1.0,
+      "note": "at least half the roster must matter"
+    }
+  ],
+  "tunables": [
+    {
+      "path": "teams.boss.0.hp",
+      "min": 7000,
+      "max": 14000,
+      "step": 250
+    },
+    {
+      "path": "teams.boss.0.atk",
+      "min": 600,
+      "max": 1000,
+      "step": 20
+    },
+    {
+      "path": "teams.party.2.crit_chance",
+      "min": 0.1,
+      "max": 0.35,
+      "step": 0.01
+    },
+    {
+      "path": "teams.party.2.skills.0.power",
+      "min": 0.35,
+      "max": 0.7,
+      "step": 0.01
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+metric,min,max,max_delta,max_delta_pct,note
+win_rate.point,0.52,0.58,0.05,,Target first-clear band for the reference cohort
+win_rate.half_width,,0.01,,,Enforces the 10000-battle reporting floor
+timeout_rate,,0.02,,,A timeout is an unreadable outcome
+draw_rate,,0.01,,,Draws hide a stalled resolution loop
+rounds.mean,14,22,3,,Encounter pacing anchor
+rounds.p90,,32,,,Tail length drives perceived slog
+rounds.cv,,0.55,,,High dispersion means the outcome is RNG-led
+max_damage_share,,0.4,,0.15,No single carry may own the encounter
+min_damage_share,0.08,,,,Every roster slot must contribute
+concentration.effective_contributors,2.5,,,,At least half the roster matters
+concentration.gini,,0.4,,,Contribution spread across the roster
+blowout_rate,,0.2,,,Too many one-sided wins reads as trivial
+close_rate,0.15,,,,Some clears should feel earned
+outcome_entropy,0.9,,,,Result should not be predetermined
+units.party/cleric.survival_rate,0.25,,,,Support must survive often enough to matter

@@ -1,0 +1,9 @@
+param_id,scenario_path,owner,system,unit,source,value,legal_min,legal_max,step,derived_from,affects,evidence,confidence,last_changed,note
+boss_warden_hp,teams.boss.0.hp,combat,encounter,hit points,Assumed,10000,7000,14000,250,,win_rate;rounds.mean;timeout_rate,sim-2026-08-15,medium,2026-08-15,Primary encounter length lever
+boss_warden_atk,teams.boss.0.atk,combat,encounter,damage,Assumed,800,600,1000,20,,win_rate;close_rate;deaths,sim-2026-08-15,medium,2026-08-15,Primary lethality lever
+rogue_crit_chance,teams.party.2.crit_chance,characters,rogue,probability,Derived,0.35,0.10,0.35,0.01,gear_tier_4,max_damage_share;rounds.cv,sim-2026-08-15,low,2026-08-15,Suspected source of damage concentration
+rogue_flurry_power,teams.party.2.skills.0.power,characters,rogue,atk multiplier,Recommended,0.55,0.35,0.70,0.01,,max_damage_share,sim-2026-08-15,low,2026-08-15,Per-hit multiplier; three hits per action
+cleric_mend_power,teams.party.3.skills.0.power,characters,cleric,atk multiplier,Assumed,1.6,1.0,2.2,0.05,,rounds.mean;timeout_rate,sim-2026-08-15,low,2026-08-15,Overheal creates stall equilibria
+defense_constant,damage_model_params.defense_constant,combat,formula,constant,Derived,300,150,600,25,mid_game_def_band,all damage,design-doc,high,2026-08-15,Halves damage when def equals the constant
+damage_variance,damage_variance,combat,formula,fraction,Assumed,0.10,0.0,0.25,0.01,,rounds.cv;outcome_entropy,design-doc,medium,2026-08-15,Uniform roll applied after crit
+max_rounds,max_rounds,combat,encounter,rounds,Observed,50,20,80,5,client timeout,timeout_rate,client-spec,high,2026-08-15,Hard cap; a timeout is an unreadable outcome
