@@ -705,6 +705,7 @@ class PlayerHtmlTests(unittest.TestCase):
 
     def _html(self, directory, **kwargs):
         base = self._fixture(directory)
+        kwargs.setdefault("runtime", None)
         return generate_spine_player.generate_html(
             str(base / "skeleton.json"),
             str(base / "skeleton.atlas"),
@@ -738,19 +739,57 @@ class PlayerHtmlTests(unittest.TestCase):
             html = self._html(directory)
             self.assertNotIn(directory, html)
 
-    def test_runtime_is_loaded_from_a_cdn(self) -> None:
-        """The page embeds its assets but NOT the Spine runtime.
+    # Only <script src> and <link href> fetch resources; <a href> is a hyperlink.
+    RESOURCE_URL = r'<(?:script|link)\b[^>]*?(?:src|href)="(https?://[^"]+)"'
 
-        SKILL.md calls the preview "self-contained" and "offline"; it is neither
-        until this dependency is vendored. Pinned here so the claim and the code
-        cannot drift apart silently.
-        """
+    def test_cdn_mode_links_a_pinned_runtime_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            html = self._html(directory)
-            external = re.findall(r'(?:src|href)="(https?://[^"]+)"', html)
-            self.assertTrue(
-                any("spine-player" in url for url in external),
-                "expected the Spine Web Player runtime to come from a CDN",
+            html = self._html(directory, runtime=None)
+            runtime_urls = re.findall(self.RESOURCE_URL, html)
+            self.assertTrue(runtime_urls, "expected a CDN runtime reference")
+            for url in runtime_urls:
+                self.assertIn(generate_spine_player.RUNTIME_VERSION, url)
+                self.assertNotIn("*", url, "the version must be pinned, not a wildcard")
+
+    def test_embedded_runtime_loads_no_external_resources(self) -> None:
+        """The whole point: an embedded page must open with no network."""
+        with tempfile.TemporaryDirectory() as directory:
+            html = self._html(directory, runtime=("/* js */", "/* css */"))
+            self.assertEqual(
+                re.findall(self.RESOURCE_URL, html), [],
+                "no resource may be fetched over the network",
+            )
+
+    def test_embedded_runtime_round_trips(self) -> None:
+        js = 'var x = "</script> <!-- <script>";'
+        css = ".spine-player { color: red }"
+        with tempfile.TemporaryDirectory() as directory:
+            html = self._html(directory, runtime=(js, css))
+            for payload, mime, expected in (
+                (js, "text/javascript", js), (css, "text/css", css)
+            ):
+                encoded = re.search(rf'"data:{re.escape(mime)};base64,([^"]+)"', html).group(1)
+                self.assertEqual(base64.b64decode(encoded).decode("utf-8"), expected)
+
+    def test_hostile_runtime_content_cannot_break_out_of_the_page(self) -> None:
+        """`</script>` inside the runtime must not terminate the document early."""
+        js = 'var a = "</script><h1>escaped</h1>";'
+        with tempfile.TemporaryDirectory() as directory:
+            html = self._html(directory, runtime=(js, ""))
+            self.assertNotIn("<h1>escaped</h1>", html)
+            self.assertEqual(html.rstrip().endswith("</html>"), True)
+
+    def test_embedded_runtime_carries_the_license_notice(self) -> None:
+        """The Spine Runtimes License requires the notice to travel with a copy."""
+        with tempfile.TemporaryDirectory() as directory:
+            html = self._html(directory, runtime=("/* js */", "/* css */"))
+            self.assertIn("Spine Runtimes License Agreement", html)
+            self.assertIn("Esoteric Software", html)
+
+    def test_cdn_mode_does_not_claim_a_license_it_is_not_shipping(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertNotIn(
+                "Spine Runtimes License Agreement", self._html(directory, runtime=None)
             )
 
     def test_selected_animation_and_title_reach_the_config(self) -> None:
@@ -768,6 +807,141 @@ class PlayerHtmlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.assertNotIn("skin:", self._html(directory, skin="default"))
             self.assertIn('skin: "armoured"', self._html(directory, skin="armoured"))
+
+
+class RuntimeResolutionTests(unittest.TestCase):
+    """Every test here must resolve the runtime without touching the network."""
+
+    def test_data_uri_encodes_and_labels_the_payload(self) -> None:
+        uri = generate_spine_player.to_data_uri("body { }", "text/css")
+        self.assertTrue(uri.startswith("data:text/css;base64,"))
+        self.assertEqual(base64.b64decode(uri.split(",", 1)[1]).decode(), "body { }")
+
+    def test_data_uri_survives_non_ascii(self) -> None:
+        uri = generate_spine_player.to_data_uri("/* café ✓ */", "text/javascript")
+        self.assertEqual(base64.b64decode(uri.split(",", 1)[1]).decode("utf-8"), "/* café ✓ */")
+
+    def test_explicit_local_paths_are_used_verbatim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            js = Path(directory) / "p.js"
+            css = Path(directory) / "p.css"
+            js.write_text("JS-BODY")
+            css.write_text("CSS-BODY")
+            self.assertEqual(
+                generate_spine_player.load_runtime(js_path=str(js), css_path=str(css)),
+                ("JS-BODY", "CSS-BODY"),
+            )
+
+    def test_one_local_path_without_the_other_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            generate_spine_player.load_runtime(js_path="only.js")
+        with self.assertRaises(ValueError):
+            generate_spine_player.load_runtime(css_path="only.css")
+
+    def test_cache_directory_follows_xdg_and_the_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": directory}, clear=True):
+                path = generate_spine_player.runtime_cache_dir("9.9.9")
+            self.assertEqual(path, Path(directory) / "spine-animation" / "spine-player-9.9.9")
+
+    def test_a_populated_cache_is_used_without_downloading(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": directory}, clear=True):
+                cache = generate_spine_player.runtime_cache_dir()
+                cache.mkdir(parents=True)
+                (cache / "spine-player.js").write_text("CACHED-JS")
+                (cache / "spine-player.css").write_text("CACHED-CSS")
+                with mock.patch("urllib.request.urlopen", side_effect=AssertionError("network")):
+                    self.assertEqual(
+                        generate_spine_player.load_runtime(), ("CACHED-JS", "CACHED-CSS")
+                    )
+
+    def test_an_empty_cache_file_is_not_trusted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_file = Path(directory) / "spine-player.js"
+            cache_file.write_text("")
+            with mock.patch("urllib.request.urlopen", side_effect=OSError("offline")):
+                with self.assertRaises(OSError):
+                    generate_spine_player.fetch_runtime_asset("https://x/y.js", cache_file)
+
+    def test_a_download_populates_the_cache(self) -> None:
+        class FakeResponse:
+            def read(self):
+                return b"DOWNLOADED"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        with tempfile.TemporaryDirectory() as directory:
+            cache_file = Path(directory) / "nested" / "spine-player.js"
+            with mock.patch("urllib.request.urlopen", return_value=FakeResponse()):
+                text = generate_spine_player.fetch_runtime_asset("https://x/y.js", cache_file)
+            self.assertEqual(text, "DOWNLOADED")
+            self.assertEqual(cache_file.read_text(), "DOWNLOADED")
+
+    def test_runtime_version_is_pinned_not_a_wildcard(self) -> None:
+        self.assertRegex(generate_spine_player.RUNTIME_VERSION, r"^\d+\.\d+\.\d+$")
+
+
+class PlayerCliTests(unittest.TestCase):
+    def _assets(self, directory):
+        base = Path(directory)
+        (base / "skeleton.json").write_text(json.dumps({"skeleton": {"spine": "4.2.0"}}))
+        (base / "skeleton.atlas").write_text("skeleton.png\nsize: 64,64\n")
+        (base / "skeleton.png").write_bytes(b"\x89PNG\r\n\x1a\nFAKE")
+        (base / "rt.js").write_text("/* local runtime */")
+        (base / "rt.css").write_text("/* local css */")
+        return base
+
+    def _run(self, base, *extra):
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS / "generate_spine_player.py"),
+             "--skeleton", str(base / "skeleton.json"),
+             "--atlas", str(base / "skeleton.atlas"),
+             "--output", str(base / "out.html"), *extra],
+            capture_output=True, text=True,
+        )
+
+    def test_local_runtime_files_are_embedded_offline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = self._assets(directory)
+            result = self._run(base, "--runtime-js", str(base / "rt.js"),
+                               "--runtime-css", str(base / "rt.css"))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            html = (base / "out.html").read_text()
+            self.assertIn(generate_spine_player.to_data_uri("/* local runtime */",
+                                                            "text/javascript"), html)
+            self.assertIn("Spine Runtimes License Agreement", html)
+
+    def test_cdn_flag_skips_embedding_entirely(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = self._assets(directory)
+            result = self._run(base, "--cdn-runtime")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            html = (base / "out.html").read_text()
+            self.assertIn("unpkg.com", html)
+            self.assertNotIn("Spine Runtimes License Agreement", html)
+
+    def test_unreachable_runtime_warns_and_degrades_to_cdn(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = self._assets(directory)
+            env = {**os.environ, "XDG_CACHE_HOME": str(base / "empty-cache")}
+            result = subprocess.run(
+                [sys.executable, "-c",
+                 "import urllib.request, sys, runpy;"
+                 "urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(OSError('offline'));"
+                 f"sys.argv = ['gen', '--skeleton', {str(base / 'skeleton.json')!r},"
+                 f" '--atlas', {str(base / 'skeleton.atlas')!r},"
+                 f" '--output', {str(base / 'out.html')!r}];"
+                 f"runpy.run_path({str(SCRIPTS / 'generate_spine_player.py')!r}, run_name='__main__')"],
+                capture_output=True, text=True, env=env, cwd=directory,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("WARNING", result.stdout)
+            self.assertIn("unpkg.com", (base / "out.html").read_text())
 
 
 # --------------------------------------------------------------------------- #

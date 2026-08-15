@@ -29,6 +29,79 @@ import sys
 from pathlib import Path
 
 
+RUNTIME_VERSION = "4.2.119"
+RUNTIME_BASE = "https://unpkg.com/@esotericsoftware/spine-player@{version}"
+RUNTIME_JS_PATH = "/dist/iife/spine-player.js"
+RUNTIME_CSS_PATH = "/dist/spine-player.css"
+
+# Required when the runtime is embedded: the Spine Runtimes License states that
+# "redistribution of the Products in any form must include this license and
+# copyright notice". An embedded copy is redistribution; a CDN link is not.
+RUNTIME_LICENSE_NOTICE = """Spine Web Player (c) 2013-2025 Esoteric Software LLC, embedded under the
+Spine Runtimes License Agreement: http://esotericsoftware.com/spine-editor-license
+Each user of this file must obtain their own Spine Editor license."""
+
+
+def runtime_cache_dir(version=RUNTIME_VERSION):
+    """Where fetched runtime files are kept so later runs need no network."""
+    root = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return Path(root) / "spine-animation" / f"spine-player-{version}"
+
+
+def fetch_runtime_asset(url, cache_path, timeout=30):
+    """Return the asset text, preferring the cache and falling back to a download."""
+    if cache_path.is_file() and cache_path.stat().st_size > 0:
+        return cache_path.read_text(encoding="utf-8")
+
+    import urllib.request
+
+    request = urllib.request.Request(url, headers={"User-Agent": "spine-animation/1.0"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        text = response.read().decode("utf-8")
+
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(text, encoding="utf-8")
+    except OSError as error:  # a read-only cache must not fail the build
+        print(f"  WARNING: could not cache {cache_path.name}: {error}")
+    return text
+
+
+def load_runtime(version=RUNTIME_VERSION, js_path=None, css_path=None):
+    """Resolve the runtime from explicit paths, then the cache, then the CDN.
+
+    Returns (js, css). Raises OSError/URLError when no source is reachable; the
+    caller decides whether to fall back to CDN <script> tags.
+    """
+    if js_path and css_path:
+        return (
+            Path(js_path).read_text(encoding="utf-8"),
+            Path(css_path).read_text(encoding="utf-8"),
+        )
+    if js_path or css_path:
+        raise ValueError("--runtime-js and --runtime-css must be given together")
+
+    cache = runtime_cache_dir(version)
+    base = RUNTIME_BASE.format(version=version)
+    js = fetch_runtime_asset(base + RUNTIME_JS_PATH, cache / "spine-player.js")
+    css = fetch_runtime_asset(base + RUNTIME_CSS_PATH, cache / "spine-player.css")
+    return js, css
+
+
+def to_data_uri(text, mime):
+    """Encode text as a base64 data: URI.
+
+    The runtime is embedded this way rather than pasted into an inline <script>
+    on purpose: it contains `<!--` followed by `<script` inside template
+    literals, which drives the HTML tokenizer into script-data-double-escaped
+    state where `</script>` no longer closes the element. A data: URI is fetched
+    and parsed as a separate resource, so the bytes survive untouched and no
+    JS-corrupting text substitution is needed.
+    """
+    payload = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    return f"data:{mime};base64,{payload}"
+
+
 def file_to_base64(path):
     """Read a file and return its base64-encoded contents."""
     with open(path, "rb") as f:
@@ -80,8 +153,14 @@ def find_atlas_images(atlas_path):
 
 def generate_html(skeleton_path, atlas_path, atlas_images,
                   animation=None, skin=None, bg_color="#1a1a2eff",
-                  show_controls=True, title="Spine Animation Preview"):
-    """Generate the complete HTML file with embedded Spine Web Player."""
+                  show_controls=True, title="Spine Animation Preview",
+                  runtime=None):
+    """Generate the complete HTML file with embedded Spine Web Player.
+
+    `runtime` is a (js, css) pair to embed, making the page work offline. Pass
+    None to link the CDN copy instead, which keeps the file small but requires
+    network access every time the preview is opened.
+    """
 
     # Get filenames for rawDataURIs keys
     skel_filename = os.path.basename(skeleton_path)
@@ -149,6 +228,21 @@ def generate_html(skeleton_path, atlas_path, atlas_images,
 
     config_js = ",\n".join(config_lines)
 
+    if runtime is not None:
+        runtime_js, runtime_css = runtime
+        runtime_head = (
+            f"<!--\n{RUNTIME_LICENSE_NOTICE}\n-->\n"
+            f'<script src="{to_data_uri(runtime_js, "text/javascript")}"></script>\n'
+            f'<link rel="stylesheet" href="{to_data_uri(runtime_css, "text/css")}">'
+        )
+    else:
+        base = RUNTIME_BASE.format(version=RUNTIME_VERSION)
+        runtime_head = (
+            "<!-- Official Spine Web Player (loaded from CDN; needs network) -->\n"
+            f'<script src="{base}{RUNTIME_JS_PATH}"></script>\n'
+            f'<link rel="stylesheet" href="{base}{RUNTIME_CSS_PATH}">'
+        )
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -156,9 +250,7 @@ def generate_html(skeleton_path, atlas_path, atlas_images,
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title}</title>
 
-<!-- Official Spine Web Player -->
-<script src="https://unpkg.com/@esotericsoftware/spine-player@4.2.*/dist/iife/spine-player.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/@esotericsoftware/spine-player@4.2.*/dist/spine-player.css">
+{runtime_head}
 
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -242,6 +334,15 @@ def main():
     parser.add_argument("--background", default="#1a1a2eff", help="Background color (hex RGBA)")
     parser.add_argument("--title", default="Spine Animation Preview", help="Page title")
     parser.add_argument("--no-controls", action="store_true", help="Hide player controls")
+    parser.add_argument("--cdn-runtime", action="store_true",
+                        help="Link the Spine runtime from unpkg instead of embedding it "
+                             "(smaller file, but the preview then needs network to open)")
+    parser.add_argument("--runtime-version", default=RUNTIME_VERSION,
+                        help=f"Spine Web Player version to embed (default: {RUNTIME_VERSION})")
+    parser.add_argument("--runtime-js", default=None,
+                        help="Local spine-player.js to embed instead of downloading")
+    parser.add_argument("--runtime-css", default=None,
+                        help="Local spine-player.css to embed instead of downloading")
     args = parser.parse_args()
 
     # Verify files exist
@@ -267,6 +368,21 @@ def main():
     for img_name, img_path in atlas_images:
         print(f"Atlas image: {img_name} ({os.path.getsize(img_path) / 1024:.1f} KB)")
 
+    # Resolve the runtime. Embedding is the default so the preview opens offline;
+    # a failed fetch degrades to the CDN rather than failing the whole run.
+    runtime = None
+    if not args.cdn_runtime:
+        try:
+            runtime = load_runtime(args.runtime_version, args.runtime_js, args.runtime_css)
+            source = "local files" if args.runtime_js else str(runtime_cache_dir(args.runtime_version))
+            print(f"Runtime: embedding spine-player {args.runtime_version} (from {source})")
+        except Exception as error:
+            print(f"  WARNING: could not obtain the Spine runtime ({error}).")
+            print("  Falling back to the CDN: this preview will need network to open.")
+            print("  To embed offline, pass --runtime-js/--runtime-css from a local install.")
+    else:
+        print("Runtime: linking the CDN copy (preview will need network to open)")
+
     # Generate HTML
     print("Generating HTML with embedded Spine Web Player...")
     html = generate_html(
@@ -276,6 +392,7 @@ def main():
         animation=args.animation,
         skin=args.skin,
         bg_color=args.background,
+        runtime=runtime,
         show_controls=not args.no_controls,
         title=args.title,
     )
@@ -285,7 +402,13 @@ def main():
 
     size_kb = os.path.getsize(args.output) / 1024
     print(f"\nPreview saved: {args.output} ({size_kb:.1f} KB)")
-    print("Open in a browser to see your animation (requires internet for the Spine Player CDN).")
+    if runtime is not None:
+        print("Open in a browser to see your animation. Works offline: assets and the")
+        print("Spine Web Player runtime are both embedded in the file.")
+        print("The embedded runtime carries the Spine Runtimes License notice; each user")
+        print("of this file needs their own Spine Editor license.")
+    else:
+        print("Open in a browser to see your animation (needs internet for the Spine Player CDN).")
 
 
 if __name__ == "__main__":

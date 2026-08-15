@@ -11,8 +11,10 @@ assembly, atlas packing, preview rendering); your job is to drive them, judge th
 visual result, and correct it.
 
 This skill produces **Spine-compatible export files** (`.json` + `.atlas` + `.png`)
-and an offline HTML preview. It does not require a Spine license to run, but the
-output loads in the official Spine editor and runtimes (Unity, Godot, Phaser, web).
+and an offline HTML preview. Generating the files does not require a Spine
+license, and the output loads in the official Spine editor and runtimes (Unity,
+Godot, Phaser, web). The preview embeds the Spine Web Player runtime, which is
+covered by the Spine Runtimes License — see Step 6.
 
 ## Setup
 
@@ -126,8 +128,9 @@ used in the skeleton.
 
 ### Step 6 — Generate a preview
 
-A self-contained HTML file (assets embedded as base64) using the official Spine
-Web Player — opens in any browser, plays/loops, and lets the user switch animations:
+A self-contained HTML file using the official Spine Web Player — opens in any
+browser, plays/loops, and lets the user switch animations. Both the assets and
+the player runtime are embedded, so the file works with no network:
 
 ```bash
 python "$SPINE/generate_spine_player.py" \
@@ -138,7 +141,26 @@ python "$SPINE/generate_spine_player.py" \
   --animation idle
 ```
 
-The Spine Web Player loads from a CDN, so the preview needs internet on first open.
+The runtime is downloaded once (~600 KB) and cached under
+`~/.cache/spine-animation/`, so only the first ever run needs network; the
+generated file itself never does. This makes the preview about 850 KB.
+
+| Flag | Use |
+|------|-----|
+| *(default)* | Embed the runtime — preview opens offline |
+| `--cdn-runtime` | Link unpkg instead; ~24 KB file, but needs internet every open |
+| `--runtime-js` + `--runtime-css` | Embed from a local copy, for fully offline generation |
+| `--runtime-version` | Pin a different Spine Web Player build |
+
+If the download fails and nothing is cached, the script warns and falls back to
+the CDN rather than failing the run — read the output, because the preview is
+then no longer offline-capable.
+
+**Licensing:** the embedded runtime is covered by the Spine Runtimes License,
+which requires the copyright notice to travel with any redistributed copy. The
+generator inserts that notice automatically. Anyone you hand the HTML to needs
+their own Spine Editor license, so use `--cdn-runtime` if you would rather link
+the runtime than ship it.
 
 ### Step 7 — Inspect and correct
 
