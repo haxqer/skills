@@ -70,9 +70,9 @@ Timelines are grouped by bone, then by property (`rotate`, `translate`, `scale`,
     "bones": {
       "torso": {
         "rotate": [
-          { "time": 0, "angle": 0, "curve": [0.25, 0, 0.75, 1] },
-          { "time": 0.8, "angle": 2 },
-          { "time": 1.6, "angle": 0 }
+          { "time": 0, "value": 0, "curve": [0.2, 0, 0.6, 2] },
+          { "time": 0.8, "value": 2, "curve": [1.0, 2, 1.4, 0] },
+          { "time": 1.6, "value": 0 }
         ],
         "translate": [
           { "time": 0, "x": 0, "y": 0 },
@@ -85,7 +85,8 @@ Timelines are grouped by bone, then by property (`rotate`, `translate`, `scale`,
 }
 ```
 
-- `rotate` keys use `angle` (degrees). `translate`/`scale` use `x`/`y`.
+- `rotate` keys use `value` (degrees). `angle` is the 3.x spelling and 4.x runtimes ignore it.
+  `translate`/`scale` use `x`/`y`.
 - For a clean loop, the **last keyframe value must equal the first**.
 
 ### Curve types
@@ -94,9 +95,18 @@ Timelines are grouped by bone, then by property (`rotate`, `translate`, `scale`,
 |-------|---------|
 | omitted | linear interpolation to the next key |
 | `"stepped"` | hold the value until the next key |
-| `[cx1, cy1, cx2, cy2]` | cubic Bézier easing |
+| `[cx1, cy1, cx2, cy2, …]` | cubic Bézier in **absolute** units, one 4-tuple per channel |
 
-Common Béziers: ease-in-out `[0.25, 0, 0.75, 1]`, ease-in `[0.42, 0, 1, 1]`,
+In Spine 4.x, the control points of a curve between key A `(tA, vA)` and key B
+`(tB, vB)` are real times and values, not 0–1 fractions. `cx` lies between tA and tB,
+and `cy` is in the channel's units. Two-channel timelines (translate, scale, shear)
+concatenate x's 4-tuple, then y's, for 8 numbers in all. A bare normalised
+`[0.25, 0, 0.75, 1]` is **wrong** in 4.x: on a rotate it means "control points at
+0.25 s, 0° and 0.75 s, 1°".
+
+Author easing as a normalised shape with `"ease"` and let `build_spine_json.py`
+convert it, or call `build_spine_json.bezier(tA, tB, vA, vB, shape)` yourself.
+Common shapes: ease-in-out `[0.25, 0, 0.75, 1]`, ease-in `[0.42, 0, 1, 1]`,
 ease-out `[0, 0, 0.58, 1]`, slight overshoot `[0.34, 1.56, 0.64, 1]`.
 
 ## Atlas (.atlas) text format

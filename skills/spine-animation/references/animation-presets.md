@@ -28,7 +28,8 @@ in mind when authoring custom motion:
 - **Follow-through & overlapping action** — secondary parts (head, hat, hair,
   hands) lag the driving bone by ~0.05–0.15s and settle after it stops.
 - **Slow in / slow out** — use Bézier easing, not linear, so motion accelerates and
-  decelerates naturally. `[0.25, 0, 0.75, 1]` is the workhorse.
+  decelerates naturally. `[0.25, 0, 0.75, 1]` is the workhorse (as a normalised
+  `"ease"` shape; see the 4.x curve rules in `spine-json-format.md`).
 - **Squash & stretch / exaggeration** — scale the amplitude to the energy of the
   action (idle is subtle, run is large).
 - **Arcs** — joints rotate around their parent, so limbs naturally travel in arcs;
@@ -52,10 +53,10 @@ exported `animations`, so it must already be valid Spine timeline JSON:
   "cast": {
     "bones": {
       "right-upper-arm": { "rotate": [
-        { "time": 0, "angle": 0, "curve": [0.25, 0, 0.75, 1] },
-        { "time": 0.3, "angle": -110 },
-        { "time": 0.8, "angle": -110, "curve": "stepped" },
-        { "time": 1.0, "angle": 0 }
+        { "time": 0, "value": 0, "ease": [0.25, 0, 0.75, 1] },
+        { "time": 0.3, "value": -110 },
+        { "time": 0.8, "value": -110, "curve": "stepped" },
+        { "time": 1.0, "value": 0 }
       ]}
     }
   }

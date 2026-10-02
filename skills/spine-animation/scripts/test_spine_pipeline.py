@@ -80,7 +80,7 @@ class KeyframeTests(unittest.TestCase):
     def test_omits_unset_properties(self) -> None:
         self.assertEqual(
             build_spine_json._kf(0.5, angle=10),
-            {"time": 0.5, "angle": 10, "curve": build_spine_json.EASE},
+            {"time": 0.5, "value": 10, "curve": build_spine_json.EASE},
         )
 
     def test_curve_none_drops_the_curve_key(self) -> None:
@@ -89,13 +89,13 @@ class KeyframeTests(unittest.TestCase):
     def test_rounding(self) -> None:
         kf = build_spine_json._kf(1 / 3, angle=1 / 3, x=2 / 3, y=-1 / 3)
         self.assertEqual(kf["time"], 0.3333)
-        self.assertEqual(kf["angle"], 0.33)
+        self.assertEqual(kf["value"], 0.33)
         self.assertEqual(kf["x"], 0.67)
         self.assertEqual(kf["y"], -0.33)
 
     def test_zero_values_are_kept_not_treated_as_unset(self) -> None:
         kf = build_spine_json._kf(0, angle=0, x=0, y=0)
-        self.assertEqual(kf["angle"], 0)
+        self.assertEqual(kf["value"], 0)
         self.assertEqual(kf["x"], 0)
         self.assertEqual(kf["y"], 0)
 
@@ -147,7 +147,7 @@ class PresetTests(unittest.TestCase):
             for bone, timelines in generator(FULL_SKELETON).get("bones", {}).items():
                 for timeline, keys in timelines.items():
                     first, last = keys[0], keys[-1]
-                    for prop in ("angle", "x", "y"):
+                    for prop in ("value", "x", "y"):
                         with self.subTest(preset=name, bone=bone, prop=prop):
                             self.assertEqual(first.get(prop, 0), last.get(prop, 0))
 
@@ -177,7 +177,7 @@ class PresetTests(unittest.TestCase):
                                 self.assertNotIn("x", key)
                                 self.assertNotIn("y", key)
                             elif timeline == "translate":
-                                self.assertNotIn("angle", key)
+                                self.assertNotIn("value", key)
 
 
 # --------------------------------------------------------------------------- #
@@ -295,14 +295,14 @@ class SkeletonTests(unittest.TestCase):
         self.assertEqual(build_spine_json.build_spine_json(config)["animations"], {})
 
     def test_custom_animations_are_merged(self) -> None:
-        custom = {"bones": {"head": {"rotate": [{"time": 0, "angle": 0}]}}}
+        custom = {"bones": {"head": {"rotate": [{"time": 0, "value": 0}]}}}
         config = minimal_config(custom_animations={"nod": custom})
         spine = build_spine_json.build_spine_json(config)
         self.assertEqual(set(spine["animations"]), {"idle", "nod"})
         self.assertEqual(spine["animations"]["nod"], custom)
 
     def test_custom_animation_overrides_a_preset_of_the_same_name(self) -> None:
-        custom = {"bones": {"head": {"rotate": [{"time": 0, "angle": 42}]}}}
+        custom = {"bones": {"head": {"rotate": [{"time": 0, "value": 42}]}}}
         config = minimal_config(custom_animations={"idle": custom})
         spine = build_spine_json.build_spine_json(config)
         self.assertEqual(spine["animations"]["idle"], custom)
@@ -1041,6 +1041,76 @@ class ZOrderTests(unittest.TestCase):
             positions["ghost"] = {"x": 0, "y": 0, "width": 10, "height": 10, "method": "test"}
             order, _ = position_parts.compute_z_order(str(reference), str(parts), positions)
             self.assertNotIn("ghost", order)
+
+
+# --------------------------------------------------------------------------- #
+# build_spine_json: Spine 4.x export format
+# --------------------------------------------------------------------------- #
+
+
+class Spine4CurveTests(unittest.TestCase):
+    def _export(self, **overrides):
+        config = minimal_config(animations=list(build_spine_json.PRESETS), **overrides)
+        config["bones"] = [{"name": "root"}] + [
+            {"name": b, "parent": "root"} for b in sorted(FULL_SKELETON)]
+        return build_spine_json.build_spine_json(config)["animations"]
+
+    def test_exported_rotations_use_value_not_angle(self) -> None:
+        for anim in self._export().values():
+            for timelines in anim.get("bones", {}).values():
+                for key in timelines.get("rotate", []):
+                    self.assertNotIn("angle", key)
+                    self.assertIn("value", key)
+
+    def test_exported_curves_are_absolute_per_channel(self) -> None:
+        """cx lies between the two key times; cy spans the two key values."""
+        for name, anim in self._export().items():
+            for bone, timelines in anim.get("bones", {}).items():
+                for timeline, keys in timelines.items():
+                    fields = build_spine_json.CHANNELS[timeline]
+                    default = build_spine_json.DEFAULTS.get(timeline, 0)
+                    for a, b in zip(keys, keys[1:]):
+                        curve = a.get("curve")
+                        if not isinstance(curve, list):
+                            continue
+                        with self.subTest(anim=name, bone=bone, timeline=timeline):
+                            self.assertEqual(len(curve), 4 * len(fields))
+                            t0, t1 = a.get("time", 0), b.get("time", 0)
+                            for i, f in enumerate(fields):
+                                cx1, cy1, cx2, cy2 = curve[4 * i:4 * i + 4]
+                                self.assertTrue(t0 <= cx1 <= t1 and t0 <= cx2 <= t1)
+                                lo = min(a.get(f, default), b.get(f, default))
+                                hi = max(a.get(f, default), b.get(f, default))
+                                span = (hi - lo) or 1
+                                for cy in (cy1, cy2):  # overshoot presets may exceed a bit
+                                    self.assertTrue(lo - span <= cy <= hi + span)
+                    self.assertNotIn("curve", keys[-1])
+
+    def test_bezier_matches_spine_absolute_form(self) -> None:
+        self.assertEqual(build_spine_json.bezier(1.0, 2.0, 10, 20, [0.25, 0, 0.75, 1]),
+                         [1.25, 10, 1.75, 20])
+
+    def test_custom_ease_is_converted_and_absolute_curve_kept(self) -> None:
+        custom = {"bones": {"head": {
+            "rotate": [{"time": 0, "value": 0, "ease": [0.25, 0, 0.75, 1]},
+                       {"time": 2, "value": 10, "curve": [2.5, 10, 3.5, 0]},
+                       {"time": 4, "value": 0}],
+            "translate": [{"time": 0, "x": 0, "y": 0, "ease": [0.25, 0, 0.75, 1]},
+                          {"time": 1, "x": 4, "y": -8}]}}}
+        anim = build_spine_json.build_spine_json(
+            minimal_config(custom_animations={"c": custom}))["animations"]["c"]
+        rot = anim["bones"]["head"]["rotate"]
+        self.assertEqual(rot[0]["curve"], [0.5, 0, 1.5, 10])
+        self.assertNotIn("ease", rot[0])
+        self.assertEqual(rot[1]["curve"], [2.5, 10, 3.5, 0])
+        self.assertEqual(anim["bones"]["head"]["translate"][0]["curve"],
+                         [0.25, 0, 0.75, 4, 0.25, 0, 0.75, -8])
+
+    def test_legacy_angle_is_migrated(self) -> None:
+        custom = {"bones": {"head": {"rotate": [{"time": 0, "angle": 5}]}}}
+        anim = build_spine_json.build_spine_json(
+            minimal_config(custom_animations={"c": custom}))["animations"]["c"]
+        self.assertEqual(anim["bones"]["head"]["rotate"], [{"time": 0, "value": 5}])
 
 
 if __name__ == "__main__":
