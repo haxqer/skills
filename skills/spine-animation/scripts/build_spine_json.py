@@ -53,10 +53,17 @@ def _has(bone_names, *names):
     return any(n in bone_names for n in names)
 
 def _kf(time, angle=None, x=None, y=None, curve=EASE):
-    """Build a keyframe dict, omitting None values."""
+    """Build a keyframe dict, omitting None values.
+
+    Generators author easing as a *normalised* Bézier shape (``curve``, 0–1 on
+    both axes) because it reads naturally. ``to_spine_curves`` converts every
+    timeline to Spine 4.x's absolute form before export — never emit these raw.
+    Rotation is stored under ``value``, the 4.x key (``angle`` is 3.x and is
+    silently ignored by 4.x runtimes).
+    """
     kf = {"time": round(time, 4)}
     if angle is not None:
-        kf["angle"] = round(angle, 2)
+        kf["value"] = round(angle, 2)
     if x is not None:
         kf["x"] = round(x, 2)
     if y is not None:
@@ -64,6 +71,85 @@ def _kf(time, angle=None, x=None, y=None, curve=EASE):
     if curve:
         kf["curve"] = curve
     return kf
+
+
+# ─── Spine 4.x curve conversion ──────────────────────────────────────────────
+# Spine 4.x stores a Bézier per animated channel in absolute units:
+#   [cx1, cy1, cx2, cy2]  with cx in seconds and cy in the channel's own value,
+# concatenated for multi-channel timelines (translate/scale/shear: x then y).
+CHANNELS = {"rotate": ("value",), "translate": ("x", "y"), "scale": ("x", "y"),
+            "shear": ("x", "y"), "translatex": ("value",), "translatey": ("value",),
+            "scalex": ("value",), "scaley": ("value",), "shearx": ("value",),
+            "sheary": ("value",)}
+DEFAULTS = {"scale": 1, "scalex": 1, "scaley": 1}
+
+
+def bezier(t0, t1, v0, v1, ease=EASE):
+    """Absolute 4.x control points for one channel eased from (t0, v0) to (t1, v1)."""
+    a, b, c, d = ease
+    return [round(t0 + a * (t1 - t0), 4), round(v0 + b * (v1 - v0), 4),
+            round(t0 + c * (t1 - t0), 4), round(v0 + d * (v1 - v0), 4)]
+
+
+def _absolutize(timeline, keys):
+    """Convert normalised ``curve``/``ease`` shapes on one timeline to 4.x form."""
+    fields = CHANNELS.get(timeline)
+    if not fields:
+        return keys
+    default = DEFAULTS.get(timeline, 0)
+    out = []
+    for i, key in enumerate(keys):
+        key = dict(key)
+        if "angle" in key and timeline == "rotate":  # 3.x spelling → 4.x
+            key["value"] = key.pop("angle")
+        shape = key.pop("ease", None)
+        if shape is None and _is_normalised(key.get("curve"), len(fields)):
+            shape = key.pop("curve")
+        if shape is not None:
+            key.pop("curve", None)
+            if i + 1 < len(keys):
+                nxt = keys[i + 1]
+                if "angle" in nxt and timeline == "rotate":
+                    nxt = {**nxt, "value": nxt["angle"]}
+                t0, t1 = key.get("time", 0), nxt.get("time", 0)
+                curve = []
+                for f in fields:
+                    curve += bezier(t0, t1, key.get(f, default), nxt.get(f, default), shape)
+                key["curve"] = curve
+        out.append(key)
+    return out
+
+
+def _is_normalised(curve, n_channels):
+    """A bare 4-number curve on a multi-channel timeline can only be a normalised shape."""
+    return isinstance(curve, list) and len(curve) == 4 and n_channels > 1
+
+
+def _curve_to_ease(key):
+    key = dict(key)
+    if isinstance(key.get("curve"), list):
+        key["ease"] = key.pop("curve")
+    return key
+
+
+def to_spine_curves(animation, normalised=True):
+    """Return ``animation`` with every bone timeline in Spine 4.x curve form.
+
+    normalised=True: a 4-number ``curve`` is treated as a normalised shape
+    (preset output). For custom animations pass False — then only ``ease``
+    keys are converted and a ``curve`` is assumed to already be absolute.
+    """
+    out = dict(animation)
+    bones = {}
+    for bone, timelines in animation.get("bones", {}).items():
+        bones[bone] = {}
+        for timeline, keys in timelines.items():
+            if normalised:
+                keys = [_curve_to_ease(k) for k in keys]
+            bones[bone][timeline] = _absolutize(timeline, keys)
+    if bones:
+        out["bones"] = bones
+    return out
 
 
 # ─── Animation Generators ───────────────────────────────────────────────────
@@ -422,18 +508,19 @@ def build_spine_json(config):
                 att_name: attachments[att_name]
             }
 
-    # Generate preset animations
+    # Generate preset animations (authored with normalised easing → 4.x curves)
     for anim_name in config.get("animations", ["idle"]):
         if anim_name in PRESETS:
             data = PRESETS[anim_name](bone_names)
             if data:
-                spine["animations"][anim_name] = data
+                spine["animations"][anim_name] = to_spine_curves(data, normalised=True)
         else:
             print(f"  WARNING: Unknown animation preset '{anim_name}', skipping")
 
-    # Merge custom animations
+    # Merge custom animations. Keys may use "ease": [a, b, c, d] (normalised) —
+    # converted here; a "curve" is passed through as already-absolute 4.x data.
     for name, data in config.get("custom_animations", {}).items():
-        spine["animations"][name] = data
+        spine["animations"][name] = to_spine_curves(data, normalised=False)
 
     return spine
 
